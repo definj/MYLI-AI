@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MYLI — Lifestyle Intelligence
 
-## Getting Started
+MYLI is a premium, minimalist-luxury full-stack web application designed for comprehensive lifestyle intelligence. It features dual tracks for Physical (body) and Mental (mind) health, powered by AI insights, personalized planning, and seamless integrations.
 
-First, run the development server:
+## Tech Stack
+- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS, Framer Motion
+- **Components**: shadcn/ui
+- **Backend & Auth**: Supabase (Postgres, Auth, Realtime, Storage)
+- **AI Integration**: Anthropic Claude API (claude-sonnet-4-20250514), Claude Vision API
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Development Order & Progress
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### ✅ Phase 1 — Foundation (Completed)
+- [x] 1. Next.js project setup with Tailwind, Framer Motion, TypeScript
+- [x] 2. Design system: CSS variables, typography, base components (Button, Card, Input, Modal)
+- [x] 3. Supabase project: schema, RLS policies, storage buckets
+- [x] 4. Authentication: all 4 login methods via Supabase Auth
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### ⏳ Phase 2 — Onboarding & Profiles
+- [ ] 5. Onboarding wizard (all 5 steps)
+- [ ] 6. Profile creation and physical/mental data storage
+- [ ] 7. BMI/BMR/TDEE calculation display
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### ⏳ Phase 3 — Physical Core
+- [ ] 8. Meal logging with camera + Claude Vision macro analysis
+- [ ] 9. Macro tracking dashboard with animated rings
+- [ ] 10. Workout plan generation (3 tiers via Claude API)
+- [ ] 11. Workout logging interface
 
-## Learn More
+### ⏳ Phase 4 — Mental Core
+- [ ] 12. Task manager with categories and priority matrix
+- [ ] 13. Daily rituals builder
+- [ ] 14. Google Calendar + Outlook OAuth integration
+- [ ] 15. Notion + Todoist integration
 
-To learn more about Next.js, take a look at the following resources:
+### ⏳ Phase 5 — Intelligence Layer
+- [ ] 16. Vitamin deficiency analysis (5-day trigger)
+- [ ] 17. AI daily brief (morning cron edge function)
+- [ ] 18. AI Life Coach chat interface
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### ⏳ Phase 6 — Engagement
+- [ ] 19. Streak system with animations
+- [ ] 20. Achievement badges system
+- [ ] 21. MYLI Score calculation
+- [ ] 22. Social feed, following, reactions
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### ⏳ Phase 7 — Polish
+- [ ] 23. Push notifications
+- [ ] 24. Settings pages + privacy
+- [ ] 25. Performance optimization, loading skeletons
+- [ ] 26. Mobile responsiveness audit
+- [ ] 27. Stripe subscription placeholder
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Running Locally
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Ensure you have Docker running (for Supabase CLI).
+2. Start the local database:
+   ```bash
+   npx supabase start
+   ```
+3. Copy `.env.local.example` to `.env.local` and add your keys (including the Supabase URL and Anon Key provided by the `start` command).
+4. Run the development server:
+   ```bash
+   npm run dev
+   ```
