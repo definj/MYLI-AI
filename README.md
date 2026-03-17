@@ -55,13 +55,39 @@ MYLI is a premium, minimalist-luxury full-stack web application designed for com
 
 ## Running Locally
 
-1. Ensure you have Docker running (for Supabase CLI).
-2. Start the local database:
+### Hosted Supabase (recommended team workflow)
+1. Copy `.env.local.example` to `.env.local`.
+2. Fill in hosted project keys:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+3. Fill in AI/integration keys as needed for the feature area you're working on.
+4. Run the development server:
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+### Optional local Supabase fallback
+1. Ensure Docker is running.
+2. Start local services:
    ```bash
    npx supabase start
    ```
-3. Copy `.env.local.example` to `.env.local` and add your keys (including the Supabase URL and Anon Key provided by the `start` command).
-4. Run the development server:
+3. Use the local keys printed by the CLI in `.env.local`.
+4. Apply migrations to local DB:
    ```bash
-   npm run dev
+   npx supabase db reset
    ```
+
+## Hosted Supabase Migration Workflow
+
+1. Link your repo to the hosted Supabase project:
+   ```bash
+   npx supabase link --project-ref <your-project-ref>
+   ```
+2. Push migrations:
+   ```bash
+   npx supabase db push
+   ```
+3. Verify policies and permissions using the matrix in [docs/rls-matrix.md](docs/rls-matrix.md).

@@ -1,7 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isDashboardPath, isOnboardingPath, isPublicPath } from '@/lib/auth/routes'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -31,11 +34,25 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith('/onboarding') || request.nextUrl.pathname === '/' || request.nextUrl.pathname.startsWith('/auth')
-  
-  if (!user && !isAuthRoute) {
+  // Redirect anonymous users away from protected areas.
+  if (!user && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/onboarding'
+    url.searchParams.set('next', pathname)
+    return NextResponse.redirect(url)
+  }
+
+  // Authenticated users should not stay on onboarding once session exists.
+  if (user && isOnboardingPath(pathname)) {
+    const url = request.nextUrl.clone()
+    const next = request.nextUrl.searchParams.get('next')
+    if (next && isDashboardPath(next)) {
+      url.pathname = next
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+    url.pathname = '/dashboard'
+    url.search = ''
     return NextResponse.redirect(url)
   }
 
