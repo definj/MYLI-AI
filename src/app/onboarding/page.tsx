@@ -60,6 +60,8 @@ export default function OnboardingPage() {
   const [name, setName] = useState('');
   const [emailAction, setEmailAction] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [isLoading, setIsLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const [track, setTrack] = useState<Track>('both');
   const [step, setStep] = useState(1);
@@ -84,20 +86,30 @@ export default function OnboardingPage() {
   });
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase
-        .from('profiles')
-        .select('onboarding_complete')
-        .eq('user_id', user.id)
-        .single()
-        .then(({ data: profile }) => {
-          if (profile?.onboarding_complete) {
-            window.location.assign('/dashboard');
-          }
-        });
-    });
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setCheckingAuth(false);
+          return;
+        }
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('onboarding_complete')
+          .eq('user_id', user.id)
+          .single();
+
+        if (profile?.onboarding_complete) {
+          setRedirecting(true);
+          window.location.assign('/dashboard');
+        } else {
+          setCheckingAuth(false);
+        }
+      } catch {
+        setCheckingAuth(false);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -139,9 +151,8 @@ export default function OnboardingPage() {
     // Always try sign-in first — works for both existing and confirm-disabled accounts
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (!signInError) {
-      setIsLoading(false);
-      setMessage({ type: 'success', text: 'Signed in. Continuing...' });
-      nextAfterAuth();
+      setMessage({ type: 'success', text: 'Signed in. Checking your profile...' });
+      await nextAfterAuth();
       return;
     }
 
@@ -195,20 +206,19 @@ export default function OnboardingPage() {
 
     // Got a session back — email confirm is off, proceed directly
     if (signUpData.session) {
-      setIsLoading(false);
       setMessage({ type: 'success', text: 'Account created. Continuing...' });
-      nextAfterAuth();
+      await nextAfterAuth();
       return;
     }
 
     // No session — try auto sign-in (handles race conditions)
     const { error: autoSignInError } = await supabase.auth.signInWithPassword({ email, password });
-    setIsLoading(false);
     if (!autoSignInError) {
       setMessage({ type: 'success', text: 'Account created. Continuing...' });
-      nextAfterAuth();
+      await nextAfterAuth();
       return;
     }
+    setIsLoading(false);
 
     setMessage({
       type: 'error',
@@ -222,6 +232,7 @@ export default function OnboardingPage() {
   const isMentalTrack = track === 'mental' || track === 'both';
 
   const nextAfterAuth = async () => {
+    setIsLoading(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
@@ -232,12 +243,14 @@ export default function OnboardingPage() {
         .single();
 
       if (profile?.onboarding_complete) {
+        setRedirecting(true);
         setMessage({ type: 'success', text: 'Welcome back! Redirecting to dashboard...' });
         window.location.assign('/dashboard');
         return;
       }
     }
 
+    setIsLoading(false);
     if (isPhysicalTrack) {
       setStep(3);
       return;
@@ -344,6 +357,17 @@ export default function OnboardingPage() {
     if (!age || !heightCm || !weightKg || !physicalForm.sex) return null;
     return calculatePhysicalMetrics(age, physicalForm.sex, heightCm, weightKg, physicalForm.activityLevel);
   })();
+
+  if (checkingAuth || redirecting) {
+    return (
+      <div className="min-h-screen bg-bg-primary text-accent-white flex flex-col items-center justify-center p-6">
+        <h1 className="font-display text-4xl tracking-tight mb-4">MYLI</h1>
+        <p className="text-accent-muted text-sm animate-pulse">
+          {redirecting ? 'Redirecting to your dashboard...' : 'Loading...'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg-primary text-accent-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
