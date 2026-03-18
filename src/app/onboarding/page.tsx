@@ -84,6 +84,23 @@ export default function OnboardingPage() {
   });
 
   useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from('profiles')
+        .select('onboarding_complete')
+        .eq('user_id', user.id)
+        .single()
+        .then(({ data: profile }) => {
+          if (profile?.onboarding_complete) {
+            window.location.assign('/dashboard');
+          }
+        });
+    });
+  }, []);
+
+  useEffect(() => {
     if (unitSystem === 'imperial') {
       setPhysicalForm(prev => ({
         ...prev,
@@ -204,7 +221,23 @@ export default function OnboardingPage() {
   const isPhysicalTrack = track === 'physical' || track === 'both';
   const isMentalTrack = track === 'mental' || track === 'both';
 
-  const nextAfterAuth = () => {
+  const nextAfterAuth = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_complete')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profile?.onboarding_complete) {
+        setMessage({ type: 'success', text: 'Welcome back! Redirecting to dashboard...' });
+        window.location.assign('/dashboard');
+        return;
+      }
+    }
+
     if (isPhysicalTrack) {
       setStep(3);
       return;

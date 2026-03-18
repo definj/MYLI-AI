@@ -41,27 +41,35 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && !isPublicPath(pathname)) {
+  if (user && isOnboardingPath(pathname)) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('onboarding_complete')
       .eq('user_id', user.id)
       .single()
 
-    if (isOnboardingPath(pathname)) {
-      if (profile?.onboarding_complete) {
-        const url = request.nextUrl.clone()
-        const next = request.nextUrl.searchParams.get('next')
-        if (next && isDashboardPath(next)) {
-          url.pathname = next
-          url.search = ''
-          return NextResponse.redirect(url)
-        }
-        url.pathname = '/dashboard'
+    if (profile?.onboarding_complete) {
+      const url = request.nextUrl.clone()
+      const next = request.nextUrl.searchParams.get('next')
+      if (next && isDashboardPath(next)) {
+        url.pathname = next
         url.search = ''
         return NextResponse.redirect(url)
       }
-    } else if (!profile?.onboarding_complete) {
+      url.pathname = '/dashboard'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+  }
+
+  if (user && !isPublicPath(pathname) && !isOnboardingPath(pathname)) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('onboarding_complete')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!profile?.onboarding_complete) {
       const url = request.nextUrl.clone()
       url.pathname = '/onboarding'
       url.searchParams.set('next', pathname)
