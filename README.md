@@ -129,4 +129,5 @@ The onboarding flow (`src/app/onboarding/page.tsx`) was overhauled with the foll
    ```bash
    npx supabase db push
    ```
-3. Verify policies and permissions using the matrix in [docs/rls-matrix.md](docs/rls-matrix.md).
+3. Verify policies and permissions using the matrix in [docs/rls-matrix.md](docs/rls-matrix.md)
+
