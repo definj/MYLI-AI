@@ -22,13 +22,16 @@ export async function GET(request: Request) {
       } = await supabase.auth.getUser()
 
       if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('onboarding_complete')
-          .eq('user_id', user.id)
-          .single()
+        const [{ data: profile }, { data: physicalProfile }, { data: mentalProfile }] = await Promise.all([
+          supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).maybeSingle(),
+          supabase.from('physical_profiles').select('id').eq('user_id', user.id).maybeSingle(),
+          supabase.from('mental_profiles').select('id').eq('user_id', user.id).maybeSingle(),
+        ])
 
-        if (!profile?.onboarding_complete) {
+        const hasExistingData =
+          profile?.onboarding_complete || physicalProfile || mentalProfile
+
+        if (!hasExistingData) {
           return NextResponse.redirect(`${origin}/onboarding`)
         }
       }

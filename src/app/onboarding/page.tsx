@@ -95,9 +95,9 @@ export default function OnboardingPage() {
           return;
         }
         const [{ data: profile }, { data: physicalProfile }, { data: mentalProfile }] = await Promise.all([
-          supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).single(),
-          supabase.from('physical_profiles').select('id').eq('user_id', user.id).single(),
-          supabase.from('mental_profiles').select('id').eq('user_id', user.id).single(),
+          supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).maybeSingle(),
+          supabase.from('physical_profiles').select('id').eq('user_id', user.id).maybeSingle(),
+          supabase.from('mental_profiles').select('id').eq('user_id', user.id).maybeSingle(),
         ]);
 
         const hasExistingData = profile?.onboarding_complete || physicalProfile || mentalProfile;
@@ -245,9 +245,9 @@ export default function OnboardingPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const [{ data: profile }, { data: physicalProfile }, { data: mentalProfile }] = await Promise.all([
-        supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).single(),
-        supabase.from('physical_profiles').select('id').eq('user_id', user.id).single(),
-        supabase.from('mental_profiles').select('id').eq('user_id', user.id).single(),
+        supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).maybeSingle(),
+        supabase.from('physical_profiles').select('id').eq('user_id', user.id).maybeSingle(),
+        supabase.from('mental_profiles').select('id').eq('user_id', user.id).maybeSingle(),
       ]);
 
       const hasExistingData = profile?.onboarding_complete || physicalProfile || mentalProfile;
