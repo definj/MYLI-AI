@@ -53,7 +53,7 @@ MYLI is a premium, minimalist-luxury full-stack web application designed for com
 
 ---
 
-## Onboarding Update
+## Onboarding Update 3/18
 
 The onboarding flow (`src/app/onboarding/page.tsx`) was overhauled with the following changes:
 
@@ -129,4 +129,4 @@ The onboarding flow (`src/app/onboarding/page.tsx`) was overhauled with the foll
    ```bash
    npx supabase db push
    ```
-3. Verify policies and permissions using the matrix in [docs/rls-matrix.md](docs/rls-matrix.md).
+3. Verify policies and permissions using the matrix in [docs/rls-matrix.md](docs/rls-matrix.md). .
