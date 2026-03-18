@@ -1,4 +1,4 @@
-const PUBLIC_ROUTE_PREFIXES = ['/auth'];
+const PUBLIC_ROUTE_PREFIXES = ['/auth', '/api'];
 const PUBLIC_ROUTES = ['/', '/onboarding'];
 
 export function isPublicPath(pathname: string) {

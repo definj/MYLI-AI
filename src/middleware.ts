@@ -34,7 +34,6 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Redirect anonymous users away from protected areas.
   if (!user && !isPublicPath(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/onboarding'
@@ -42,18 +41,32 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Authenticated users should not stay on onboarding once session exists.
-  if (user && isOnboardingPath(pathname)) {
-    const url = request.nextUrl.clone()
-    const next = request.nextUrl.searchParams.get('next')
-    if (next && isDashboardPath(next)) {
-      url.pathname = next
-      url.search = ''
+  if (user && !isPublicPath(pathname)) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('onboarding_complete')
+      .eq('user_id', user.id)
+      .single()
+
+    if (isOnboardingPath(pathname)) {
+      if (profile?.onboarding_complete) {
+        const url = request.nextUrl.clone()
+        const next = request.nextUrl.searchParams.get('next')
+        if (next && isDashboardPath(next)) {
+          url.pathname = next
+          url.search = ''
+          return NextResponse.redirect(url)
+        }
+        url.pathname = '/dashboard'
+        url.search = ''
+        return NextResponse.redirect(url)
+      }
+    } else if (!profile?.onboarding_complete) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/onboarding'
+      url.searchParams.set('next', pathname)
       return NextResponse.redirect(url)
     }
-    url.pathname = '/dashboard'
-    url.search = ''
-    return NextResponse.redirect(url)
   }
 
   return supabaseResponse

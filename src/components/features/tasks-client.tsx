@@ -25,6 +25,14 @@ export function TasksClient({ initialTasks }: { initialTasks: Task[] }) {
     if (!title.trim()) return;
     setIsLoading(true);
     setError(null);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setIsLoading(false);
+      setError('You must be signed in to add tasks.');
+      return;
+    }
+
     tempCounter.current += 1;
     const optimistic: Task = {
       id: `tmp-${tempCounter.current}`,
@@ -38,7 +46,7 @@ export function TasksClient({ initialTasks }: { initialTasks: Task[] }) {
 
     const { data, error: insertError } = await supabase
       .from('daily_tasks')
-      .insert({ title: optimistic.title, category: 'work', priority: 'medium' })
+      .insert({ user_id: user.id, title: optimistic.title, category: 'work', priority: 'medium' })
       .select('id, title, completed, category, priority')
       .single();
     setIsLoading(false);

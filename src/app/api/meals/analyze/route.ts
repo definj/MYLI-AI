@@ -1,6 +1,36 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { callAnthropicVisionJson, safeJsonParse } from '@/lib/ai/anthropic';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+async function updateStreak(supabase: SupabaseClient, userId: string) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const { data: existing } = await supabase
+    .from('streaks')
+    .select('id, current_count, longest_count, last_date')
+    .eq('user_id', userId)
+    .eq('streak_type', 'meal')
+    .maybeSingle();
+
+  if (!existing) {
+    await supabase.from('streaks').insert({
+      user_id: userId, streak_type: 'meal', current_count: 1, longest_count: 1, last_date: todayStr,
+    });
+    return;
+  }
+  if (existing.last_date === todayStr) return;
+
+  const last = new Date(existing.last_date);
+  const now = new Date(todayStr);
+  const consecutive = Math.round((now.getTime() - last.getTime()) / 86400000) === 1;
+  const newCount = consecutive ? existing.current_count + 1 : 1;
+
+  await supabase.from('streaks').update({
+    current_count: newCount,
+    longest_count: Math.max(existing.longest_count, newCount),
+    last_date: todayStr,
+  }).eq('id', existing.id);
+}
 
 type MealAnalysis = {
   description: string;
@@ -93,8 +123,13 @@ export async function POST(request: Request) {
   const base64 = Buffer.from(bytes).toString('base64');
   const mediaType = file.type || 'image/jpeg';
 
+  const mealType = formData.get('meal_type');
+  const mealTypeHint = typeof mealType === 'string' && mealType !== 'unspecified'
+    ? ` This is a ${mealType} meal.`
+    : '';
+
   const prompt =
-    'Analyze this meal photo. Return JSON with: description (string), calories (number), protein_g (number), carbs_g (number), fat_g (number), fiber_g (number), ingredients (array of strings), confidence (0-1). Be precise and realistic. Return only valid JSON.';
+    `Analyze this meal photo.${mealTypeHint} Estimate the total nutritional content of everything visible on the plate/tray. Return a single JSON object (no markdown, no explanation) with these exact keys: description (string, 1-2 sentence summary of the meal), calories (number, total kcal), protein_g (number), carbs_g (number), fat_g (number), fiber_g (number), ingredients (array of strings listing each identified food item), confidence (number 0-1 indicating how confident you are). Be realistic and precise. Consider portion sizes carefully.`;
 
   const aiResult = await callAnthropicVisionJson(
     base64,
@@ -116,7 +151,7 @@ export async function POST(request: Request) {
   await supabase.from('meal_logs').insert({
     user_id: user.id,
     photo_url: publicUrlData.publicUrl,
-    meal_type: 'unspecified',
+    meal_type: typeof mealType === 'string' ? mealType : 'unspecified',
     calories: analysis.calories,
     protein_g: analysis.protein_g,
     carbs_g: analysis.carbs_g,
@@ -125,6 +160,8 @@ export async function POST(request: Request) {
     ai_description: analysis.description,
     raw_ai_response: aiResult.ok ? { raw_text: aiResult.text, parsed } : { error: aiResult.error },
   });
+
+  void updateStreak(supabase, user.id);
 
   return NextResponse.json(warning ? { ...analysis, warning } : analysis);
 }

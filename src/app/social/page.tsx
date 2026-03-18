@@ -8,7 +8,7 @@ export default async function SocialPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from('feed_posts')
-    .select('id, content, content_type, created_at')
+    .select('id, content, content_type, created_at, likes_count')
     .order('created_at', { ascending: false })
     .limit(20);
 

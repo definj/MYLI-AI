@@ -21,8 +21,8 @@ export async function callAnthropicText(messages: AnthropicMessage[], system?: s
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 900,
-      system,
+      max_tokens: 1024,
+      ...(system ? { system } : {}),
       messages: messages.map((m) => ({ role: m.role, content: [{ type: 'text', text: m.content }] })),
     }),
   });
@@ -85,7 +85,7 @@ export async function callAnthropicVisionJson(
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1200,
-      system,
+      ...(system ? { system } : {}),
       messages: [
         {
           role: 'user',

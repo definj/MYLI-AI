@@ -13,8 +13,9 @@ export default async function MindDashboardPage() {
   if (!user) redirect('/onboarding');
 
   const nowIso = new Date().toISOString();
+  const todayDate = new Date().toISOString().split('T')[0];
 
-  const [{ data: profile }, { data: mental }, { data: tasks }, { data: ritualsStreak }, { data: latestVitamin }] =
+  const [{ data: profile }, { data: mental }, { data: tasks }, { data: ritualsStreak }, { data: latestVitamin }, { data: todayBrief }] =
     await Promise.all([
       supabase.from('profiles').select('myli_score, track').eq('user_id', user.id).single(),
       supabase
@@ -42,6 +43,12 @@ export default async function MindDashboardPage() {
         .order('generated_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from('daily_briefs')
+        .select('greeting, motivation')
+        .eq('user_id', user.id)
+        .eq('brief_date', todayDate)
+        .maybeSingle(),
     ]);
 
   const topTasks = (tasks ?? []).slice(0, 3);
@@ -49,8 +56,8 @@ export default async function MindDashboardPage() {
   const completeTaskCount = (tasks ?? []).filter((t) => t.completed).length;
 
   return (
-    <main className="min-h-screen bg-bg-primary px-6 py-10 text-accent-white sm:px-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <main className="min-h-screen bg-bg-primary px-4 py-8 text-accent-white sm:px-10 sm:py-10">
+      <div className="mx-auto max-w-6xl space-y-5 sm:space-y-6">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.25em] text-accent-muted">Dashboard / Mind</p>
           <h1 className="mt-3 font-display text-4xl">Mental Track Dashboard</h1>
@@ -58,6 +65,17 @@ export default async function MindDashboardPage() {
             Focus planning, task execution, and mental energy markers in one daily view.
           </p>
         </div>
+
+        {todayBrief ? (
+          <Link href="/brief" className="block rounded-xl border border-accent-gold/20 bg-bg-surface/70 p-4 transition-colors hover:border-accent-gold/40">
+            <p className="text-sm text-accent-white">{todayBrief.greeting}</p>
+            <p className="mt-1 text-xs italic text-accent-gold">&ldquo;{todayBrief.motivation}&rdquo;</p>
+          </Link>
+        ) : (
+          <Link href="/brief" className="block rounded-xl border border-bg-surface bg-bg-surface/40 p-4 transition-colors hover:border-accent-gold/30">
+            <p className="text-sm text-accent-muted">Your daily brief is ready. Tap to generate today's personalized summary.</p>
+          </Link>
+        )}
 
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">

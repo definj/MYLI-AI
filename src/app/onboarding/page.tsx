@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 type Track = 'physical' | 'mental' | 'both';
-type AuthMode = 'email' | 'phone' | 'oauth';
 
 type PhysicalFormState = {
   age: string;
@@ -45,19 +44,30 @@ function calculatePhysicalMetrics(age: number, sex: string, heightCm: number, we
   };
 }
 
+function ftInToCm(ft: string, inches: string): string {
+  const totalInches = Number(ft || 0) * 12 + Number(inches || 0);
+  return totalInches > 0 ? (totalInches * 2.54).toFixed(1) : '';
+}
+
+function lbsToKg(lbs: string): string {
+  const val = Number(lbs);
+  return val > 0 ? (val * 0.453592).toFixed(1) : '';
+}
+
 export default function OnboardingPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [mode, setMode] = useState<AuthMode>('oauth');
+  const [name, setName] = useState('');
   const [emailAction, setEmailAction] = useState<'sign-in' | 'sign-up'>('sign-in');
-  const [phoneStep, setPhoneStep] = useState<'request' | 'verify'>('request');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const [track, setTrack] = useState<Track>('both');
   const [step, setStep] = useState(1);
   const [myliScore, setMyliScore] = useState<number | null>(null);
+  const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>('metric');
+  const [heightFt, setHeightFt] = useState('');
+  const [heightIn, setHeightIn] = useState('');
+  const [weightLbs, setWeightLbs] = useState('');
   const [physicalForm, setPhysicalForm] = useState<PhysicalFormState>({
     age: '',
     sex: '',
@@ -73,29 +83,30 @@ export default function OnboardingPage() {
     lifeAreas: '',
   });
 
-  const appUrl =
+  useEffect(() => {
+    if (unitSystem === 'imperial') {
+      setPhysicalForm(prev => ({
+        ...prev,
+        heightCm: ftInToCm(heightFt, heightIn),
+        weightKg: lbsToKg(weightLbs),
+      }));
+    }
+  }, [unitSystem, heightFt, heightIn, weightLbs]);
+
+  const stepLabels: Record<number, string> = {
+    1: 'Choose Your Track',
+    2: 'Create Account',
+    3: 'Physical Profile',
+    4: 'Mental Profile',
+    5: 'You\'re Ready',
+  };
+
+  const appUrl = (
     process.env.NEXT_PUBLIC_APP_URL ||
-    (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+    (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
+  ).replace(/\/+$/, '');
 
   const clearFeedback = () => setMessage(null);
-
-  const handleOAuth = async (provider: 'google' | 'apple') => {
-    const supabase = createClient();
-    clearFeedback();
-    setIsLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: `${appUrl}/auth/callback`,
-      },
-    });
-    setIsLoading(false);
-    if (error) {
-      setMessage({ type: 'error', text: error.message });
-      return;
-    }
-    setMessage({ type: 'success', text: 'Redirecting to provider...' });
-  };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,93 +118,88 @@ export default function OnboardingPage() {
     }
 
     setIsLoading(true);
-    if (emailAction === 'sign-in') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    // Always try sign-in first — works for both existing and confirm-disabled accounts
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (!signInError) {
       setIsLoading(false);
-      if (error) {
-        setMessage({ type: 'error', text: error.message });
-        return;
-      }
-      setMessage({ type: 'success', text: 'Signed in. Redirecting...' });
-      setStep(3);
+      setMessage({ type: 'success', text: 'Signed in. Continuing...' });
+      nextAfterAuth();
       return;
     }
 
-    const { error } = await supabase.auth.signUp({
+    // If sign-in failed and user wanted to sign in, show the error
+    if (emailAction === 'sign-in') {
+      setIsLoading(false);
+      setMessage({ type: 'error', text: signInError.message });
+      return;
+    }
+
+    // Sign-up flow
+    if (!name.trim()) {
+      setIsLoading(false);
+      setMessage({ type: 'error', text: 'Please enter your name.' });
+      return;
+    }
+
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: `${appUrl}/auth/callback`,
+        data: { full_name: name },
       },
     });
-    setIsLoading(false);
-    if (error) {
-      setMessage({ type: 'error', text: error.message });
-      return;
-    }
-    setMessage({
-      type: 'success',
-      text: 'Account created. Check email if needed, then continue signing in.',
-    });
-  };
 
-  const handlePhoneAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const supabase = createClient();
-    clearFeedback();
-    if (phoneStep === 'request') {
-      if (!phone) {
-        setMessage({ type: 'error', text: 'Phone number is required.' });
-        return;
-      }
-      setIsLoading(true);
-      const { error } = await supabase.auth.signInWithOtp({ phone });
+    console.log('[MYLI Debug] signUp response:', {
+      user: signUpData?.user?.id,
+      identities: signUpData?.user?.identities?.length,
+      session: !!signUpData?.session,
+      confirmed: signUpData?.user?.confirmed_at,
+      error: signUpError?.message,
+    });
+
+    if (signUpError) {
       setIsLoading(false);
-      if (error) {
-        setMessage({ type: 'error', text: error.message });
-        return;
-      }
-      setPhoneStep('verify');
-      setMessage({ type: 'success', text: 'OTP sent. Enter the verification code.' });
+      setMessage({ type: 'error', text: signUpError.message });
       return;
     }
 
-    if (!otpCode) {
-      setMessage({ type: 'error', text: 'Verification code is required.' });
+    // Account already exists (empty identities array)
+    if (signUpData.user?.identities?.length === 0) {
+      setIsLoading(false);
+      setMessage({
+        type: 'error',
+        text: 'An account with this email already exists. Switch to Sign In and use your password.',
+      });
+      setEmailAction('sign-in');
       return;
     }
 
-    setIsLoading(true);
-    const { error } = await supabase.auth.verifyOtp({
-      phone,
-      token: otpCode,
-      type: 'sms',
+    // Got a session back — email confirm is off, proceed directly
+    if (signUpData.session) {
+      setIsLoading(false);
+      setMessage({ type: 'success', text: 'Account created. Continuing...' });
+      nextAfterAuth();
+      return;
+    }
+
+    // No session — try auto sign-in (handles race conditions)
+    const { error: autoSignInError } = await supabase.auth.signInWithPassword({ email, password });
+    setIsLoading(false);
+    if (!autoSignInError) {
+      setMessage({ type: 'success', text: 'Account created. Continuing...' });
+      nextAfterAuth();
+      return;
+    }
+
+    setMessage({
+      type: 'error',
+      text: 'Account created but could not auto sign-in. Please switch to Sign In and try again.',
     });
-    setIsLoading(false);
-    if (error) {
-      setMessage({ type: 'error', text: error.message });
-      return;
-    }
-    setMessage({ type: 'success', text: 'Phone verified. Redirecting...' });
-    setStep(3);
+    setEmailAction('sign-in');
   };
 
-  const resendOtp = async () => {
-    const supabase = createClient();
-    clearFeedback();
-    if (!phone) {
-      setMessage({ type: 'error', text: 'Phone number is required.' });
-      return;
-    }
-    setIsLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({ phone });
-    setIsLoading(false);
-    if (error) {
-      setMessage({ type: 'error', text: error.message });
-      return;
-    }
-    setMessage({ type: 'success', text: 'A new OTP has been sent.' });
-  };
 
   const isPhysicalTrack = track === 'physical' || track === 'both';
   const isMentalTrack = track === 'mental' || track === 'both';
@@ -257,6 +263,7 @@ export default function OnboardingPage() {
           sex: physicalForm.sex,
           height_cm: heightCm,
           weight_kg: weightKg,
+          unit_system: unitSystem,
           activity_level: physicalForm.activityLevel,
           goal: physicalForm.goal,
           bmi: metrics.bmi,
@@ -291,8 +298,10 @@ export default function OnboardingPage() {
     }
 
     setIsLoading(false);
-    setMessage({ type: 'success', text: 'Onboarding complete. Welcome to MYLI.' });
-    setStep(5);
+    setMessage({ type: 'success', text: 'Onboarding complete. Redirecting to your dashboard...' });
+    setTimeout(() => {
+      window.location.assign('/dashboard');
+    }, 1500);
   };
 
   const physicalPreview = (() => {
@@ -313,8 +322,8 @@ export default function OnboardingPage() {
       >
         <div className="text-center mb-12">
           <h1 className="font-display text-4xl tracking-tight mb-3">MYLI</h1>
-          <p className="text-accent-muted font-sans font-light tracking-wide">
-            Step {step} of 5
+          <p className="text-accent-muted font-sans font-light tracking-wide text-sm">
+            {stepLabels[step] ?? `Step ${step}`}
           </p>
         </div>
 
@@ -333,6 +342,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          {/* Step 1 — Track Selection */}
           {step === 1 && (
             <div className="space-y-4">
               <p className="text-sm text-accent-muted">Select your starting track.</p>
@@ -372,188 +382,84 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          {/* Step 2 — Email Auth Form */}
           {step === 2 && (
-            <>
-              <Button 
-                variant="outline" 
-                className="w-full h-14 bg-bg-surface border-none text-accent-white hover:bg-bg-secondary hover:text-accent-white transition-colors duration-300"
-                onClick={() => handleOAuth('apple')}
-                disabled={isLoading}
-              >
-                {isLoading ? 'Loading...' : 'Continue with Apple'}
-              </Button>
-
-              <Button 
-                variant="outline" 
-                className="w-full h-14 bg-bg-surface border-none text-accent-white hover:bg-bg-secondary hover:text-accent-white transition-colors duration-300"
-                onClick={() => handleOAuth('google')}
-                disabled={isLoading}
-              >
-                {isLoading ? 'Loading...' : 'Continue with Google'}
-              </Button>
-
-              <div className="flex items-center gap-4 py-4">
-                <div className="flex-1 h-px bg-bg-surface"></div>
-                <span className="text-accent-muted text-sm font-mono tracking-widest uppercase">OR</span>
-                <div className="flex-1 h-px bg-bg-surface"></div>
-              </div>
-
-              {mode === 'oauth' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <Button
-                    variant="ghost"
-                    className="h-12 border border-bg-surface text-accent-muted hover:text-accent-white"
-                    onClick={() => {
-                      clearFeedback();
-                      setMode('email');
-                    }}
-                    disabled={isLoading}
-                  >
-                    Email
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="h-12 border border-bg-surface text-accent-muted hover:text-accent-white"
-                    onClick={() => {
-                      clearFeedback();
-                      setMode('phone');
-                    }}
-                    disabled={isLoading}
-                  >
-                    Phone
-                  </Button>
-                </div>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full h-12 border-bg-surface text-accent-muted hover:text-accent-white"
-                onClick={nextAfterAuth}
-              >
-                I am already authenticated
-              </Button>
-            </>
-          )}
-
-          {step === 2 && mode === 'email' && (
-            <motion.form 
+            <motion.form
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               className="space-y-4 overflow-hidden"
               onSubmit={handleEmailAuth}
             >
-              <Input 
-                type="email" 
-                placeholder="Email address" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="h-14 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted focus-visible:ring-1 focus-visible:ring-accent-gold"
-              />
-              <Input 
-                type="password" 
-                placeholder="Password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="h-14 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted focus-visible:ring-1 focus-visible:ring-accent-gold"
-              />
               <div className="grid grid-cols-2 gap-4">
                 <Button
                   type="button"
-                  variant={emailAction === 'sign-in' ? 'default' : 'ghost'}
-                  className={emailAction === 'sign-in' ? 'h-12 bg-accent-gold text-bg-primary hover:bg-accent-gold/90' : 'h-12 border border-bg-surface text-accent-muted hover:text-accent-white'}
-                  onClick={() => setEmailAction('sign-in')}
+                  className={emailAction === 'sign-in' ? 'h-12 bg-accent-gold text-bg-primary hover:bg-accent-gold/90' : 'h-12 border border-bg-surface bg-transparent text-accent-muted hover:text-accent-white'}
+                  onClick={() => { setEmailAction('sign-in'); clearFeedback(); }}
                   disabled={isLoading}
                 >
                   Sign In
                 </Button>
                 <Button
                   type="button"
-                  variant={emailAction === 'sign-up' ? 'default' : 'ghost'}
-                  className={emailAction === 'sign-up' ? 'h-12 bg-accent-gold text-bg-primary hover:bg-accent-gold/90' : 'h-12 border border-bg-surface text-accent-muted hover:text-accent-white'}
-                  onClick={() => setEmailAction('sign-up')}
+                  className={emailAction === 'sign-up' ? 'h-12 bg-accent-gold text-bg-primary hover:bg-accent-gold/90' : 'h-12 border border-bg-surface bg-transparent text-accent-muted hover:text-accent-white'}
+                  onClick={() => { setEmailAction('sign-up'); clearFeedback(); }}
                   disabled={isLoading}
                 >
-                  Sign Up
+                  Create Account
                 </Button>
               </div>
+
+              {emailAction === 'sign-up' && (
+                <Input
+                  type="text"
+                  placeholder="Full name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="h-14 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted focus-visible:ring-1 focus-visible:ring-accent-gold"
+                  required
+                />
+              )}
+
+              <Input
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-14 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted focus-visible:ring-1 focus-visible:ring-accent-gold"
+                required
+              />
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-14 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted focus-visible:ring-1 focus-visible:ring-accent-gold"
+                required
+              />
+
               <div className="flex gap-4 pt-2">
-                <Button 
+                <Button
                   type="button"
-                  variant="ghost" 
-                  onClick={() => {
-                    clearFeedback();
-                    setMode('oauth');
-                  }}
+                  variant="ghost"
+                  onClick={() => { clearFeedback(); setStep(1); }}
                   className="h-12 flex-1 border border-bg-surface text-accent-muted hover:text-accent-white"
                   disabled={isLoading}
                 >
                   Back
                 </Button>
-                <Button type="submit" className="h-12 flex-1 bg-accent-gold text-bg-primary hover:bg-accent-gold/90 font-medium" disabled={isLoading}>
+                <Button
+                  type="submit"
+                  className="h-12 flex-1 bg-accent-gold text-bg-primary hover:bg-accent-gold/90 font-medium"
+                  disabled={isLoading}
+                >
                   {isLoading ? 'Working...' : emailAction === 'sign-in' ? 'Sign In' : 'Create Account'}
                 </Button>
               </div>
             </motion.form>
           )}
 
-          {step === 2 && mode === 'phone' && (
-            <motion.form 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="space-y-4 overflow-hidden"
-              onSubmit={handlePhoneAuth}
-            >
-              <Input 
-                type="tel" 
-                placeholder="Phone number" 
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="h-14 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted focus-visible:ring-1 focus-visible:ring-accent-gold"
-                disabled={phoneStep === 'verify' || isLoading}
-              />
-              {phoneStep === 'verify' && (
-                <Input
-                  type="text"
-                  placeholder="Verification code"
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                  className="h-14 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted focus-visible:ring-1 focus-visible:ring-accent-gold"
-                  disabled={isLoading}
-                />
-              )}
-              <div className="flex gap-4 pt-2">
-                <Button 
-                  type="button"
-                  variant="ghost" 
-                  onClick={() => {
-                    clearFeedback();
-                    setMode('oauth');
-                    setPhoneStep('request');
-                    setOtpCode('');
-                  }}
-                  className="h-12 flex-1 border border-bg-surface text-accent-muted hover:text-accent-white"
-                  disabled={isLoading}
-                >
-                  Back
-                </Button>
-                <Button type="submit" className="h-12 flex-1 bg-accent-gold text-bg-primary hover:bg-accent-gold/90 font-medium" disabled={isLoading}>
-                  {isLoading ? 'Working...' : phoneStep === 'request' ? 'Send Code' : 'Verify Code'}
-                </Button>
-              </div>
-              {phoneStep === 'verify' && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-10 w-full border border-bg-surface text-accent-muted hover:text-accent-white"
-                  onClick={resendOtp}
-                  disabled={isLoading}
-                >
-                  Resend OTP
-                </Button>
-              )}
-            </motion.form>
-          )}
 
+          {/* Step 3 — Physical Profile */}
           {step === 3 && isPhysicalTrack && (
             <div className="space-y-4">
               <p className="text-sm text-accent-muted">Physical profile</p>
@@ -564,57 +470,157 @@ export default function OnboardingPage() {
                 onChange={(e) => setPhysicalForm((prev) => ({ ...prev, age: e.target.value }))}
                 className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
               />
-              <Input
-                type="text"
-                placeholder="Sex (male/female)"
+              <select
                 value={physicalForm.sex}
                 onChange={(e) => setPhysicalForm((prev) => ({ ...prev, sex: e.target.value }))}
-                className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
-              />
-              <Input
-                type="number"
-                placeholder="Height (cm)"
-                value={physicalForm.heightCm}
-                onChange={(e) => setPhysicalForm((prev) => ({ ...prev, heightCm: e.target.value }))}
-                className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
-              />
-              <Input
-                type="number"
-                placeholder="Weight (kg)"
-                value={physicalForm.weightKg}
-                onChange={(e) => setPhysicalForm((prev) => ({ ...prev, weightKg: e.target.value }))}
-                className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
-              />
-              <Input
-                type="text"
-                placeholder="Activity level: sedentary/lightly_active/moderately_active/very_active/athlete"
+                className="h-12 w-full rounded-lg bg-bg-surface border-none px-3 text-accent-white outline-none"
+              >
+                <option value="" disabled>Sex</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+
+              {/* Unit system toggle */}
+              <div className="flex items-center gap-2 rounded-lg bg-bg-surface p-1">
+                <button
+                  type="button"
+                  onClick={() => setUnitSystem('metric')}
+                  className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                    unitSystem === 'metric'
+                      ? 'bg-accent-gold text-bg-primary'
+                      : 'text-accent-muted hover:text-accent-white'
+                  }`}
+                >
+                  Metric (kg / cm)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUnitSystem('imperial')}
+                  className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
+                    unitSystem === 'imperial'
+                      ? 'bg-accent-gold text-bg-primary'
+                      : 'text-accent-muted hover:text-accent-white'
+                  }`}
+                >
+                  Imperial (lbs / ft)
+                </button>
+              </div>
+
+              {/* Height */}
+              {unitSystem === 'metric' ? (
+                <Input
+                  type="number"
+                  placeholder="Height (cm)"
+                  value={physicalForm.heightCm}
+                  onChange={(e) => setPhysicalForm((prev) => ({ ...prev, heightCm: e.target.value }))}
+                  className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
+                />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    type="number"
+                    placeholder="Feet"
+                    value={heightFt}
+                    onChange={(e) => setHeightFt(e.target.value)}
+                    className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
+                    min="0"
+                    max="9"
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Inches"
+                    value={heightIn}
+                    onChange={(e) => setHeightIn(e.target.value)}
+                    className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
+                    min="0"
+                    max="11"
+                  />
+                </div>
+              )}
+
+              {/* Weight */}
+              {unitSystem === 'metric' ? (
+                <Input
+                  type="number"
+                  placeholder="Weight (kg)"
+                  value={physicalForm.weightKg}
+                  onChange={(e) => setPhysicalForm((prev) => ({ ...prev, weightKg: e.target.value }))}
+                  className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
+                />
+              ) : (
+                <Input
+                  type="number"
+                  placeholder="Weight (lbs)"
+                  value={weightLbs}
+                  onChange={(e) => setWeightLbs(e.target.value)}
+                  className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
+                />
+              )}
+
+              <select
                 value={physicalForm.activityLevel}
                 onChange={(e) => setPhysicalForm((prev) => ({ ...prev, activityLevel: e.target.value }))}
-                className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
-              />
-              <Input
-                type="text"
-                placeholder="Goal: lose_fat/build_muscle/improve_endurance/maintain/recomposition"
+                className="h-12 w-full rounded-lg bg-bg-surface border-none px-3 text-accent-white outline-none"
+              >
+                <option value="sedentary">Sedentary</option>
+                <option value="lightly_active">Lightly Active</option>
+                <option value="moderately_active">Moderately Active</option>
+                <option value="very_active">Very Active</option>
+                <option value="athlete">Athlete</option>
+              </select>
+              <select
                 value={physicalForm.goal}
                 onChange={(e) => setPhysicalForm((prev) => ({ ...prev, goal: e.target.value }))}
-                className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
-              />
+                className="h-12 w-full rounded-lg bg-bg-surface border-none px-3 text-accent-white outline-none"
+              >
+                <option value="maintain">Maintain</option>
+                <option value="lose_fat">Lose Fat</option>
+                <option value="build_muscle">Build Muscle</option>
+                <option value="improve_endurance">Improve Endurance</option>
+                <option value="recomposition">Recomposition</option>
+              </select>
               {physicalPreview && (
-                <div className="rounded-md border border-bg-surface p-3 text-sm text-accent-muted">
-                  BMI: {physicalPreview.bmi} | BMR: {physicalPreview.bmr} | TDEE: {physicalPreview.tdee}
+                <div className="rounded-md border border-bg-surface p-4 text-sm">
+                  <p className="text-accent-muted mb-2 font-mono text-xs uppercase tracking-widest">Live Health Metrics</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-accent-muted text-xs">BMI</p>
+                      <p className="text-accent-gold font-display text-xl">{physicalPreview.bmi}</p>
+                    </div>
+                    <div>
+                      <p className="text-accent-muted text-xs">BMR</p>
+                      <p className="text-accent-gold font-display text-xl">{physicalPreview.bmr}</p>
+                    </div>
+                    <div>
+                      <p className="text-accent-muted text-xs">TDEE</p>
+                      <p className="text-accent-gold font-display text-xl">{physicalPreview.tdee}</p>
+                    </div>
+                  </div>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <Button type="button" variant="ghost" className="h-12 border border-bg-surface text-accent-muted hover:text-accent-white" onClick={() => setStep(2)}>
                   Back
                 </Button>
-                <Button type="button" className="h-12 bg-accent-gold text-bg-primary hover:bg-accent-gold/90" onClick={() => setStep(isMentalTrack ? 4 : 5)}>
+                <Button
+                  type="button"
+                  className="h-12 bg-accent-gold text-bg-primary hover:bg-accent-gold/90"
+                  onClick={() => {
+                    if (!physicalForm.age || !physicalForm.sex || !physicalForm.heightCm || !physicalForm.weightKg) {
+                      setMessage({ type: 'error', text: 'Please fill in all physical profile fields.' });
+                      return;
+                    }
+                    clearFeedback();
+                    setStep(isMentalTrack ? 4 : 5);
+                  }}
+                >
                   Continue
                 </Button>
               </div>
             </div>
           )}
 
+          {/* Step 4 — Mental Profile */}
           {step === 4 && isMentalTrack && (
             <div className="space-y-4">
               <p className="text-sm text-accent-muted">Mental profile</p>
@@ -631,17 +637,23 @@ export default function OnboardingPage() {
                 value={mentalForm.sleepAvg}
                 onChange={(e) => setMentalForm((prev) => ({ ...prev, sleepAvg: e.target.value }))}
                 className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
+                step="0.5"
+                min="0"
+                max="24"
               />
-              <Input
-                type="text"
-                placeholder="Productivity style (deep_work/pomodoro/time_blocking/flexible)"
+              <select
                 value={mentalForm.productivityStyle}
                 onChange={(e) => setMentalForm((prev) => ({ ...prev, productivityStyle: e.target.value }))}
-                className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
-              />
+                className="h-12 w-full rounded-lg bg-bg-surface border-none px-3 text-accent-white outline-none"
+              >
+                <option value="deep_work">Deep Work</option>
+                <option value="pomodoro">Pomodoro</option>
+                <option value="time_blocking">Time Blocking</option>
+                <option value="flexible">Flexible</option>
+              </select>
               <Input
                 type="text"
-                placeholder="Life areas (comma separated)"
+                placeholder="Life areas to improve (comma separated)"
                 value={mentalForm.lifeAreas}
                 onChange={(e) => setMentalForm((prev) => ({ ...prev, lifeAreas: e.target.value }))}
                 className="h-12 bg-bg-surface border-none text-accent-white placeholder:text-accent-muted"
@@ -662,12 +674,32 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          {/* Step 5 — Welcome / Save */}
           {step === 5 && (
             <div className="space-y-4">
               <h2 className="font-display text-3xl">Welcome to MYLI</h2>
               <p className="text-accent-muted">
                 Your profile is ready. We will personalize your daily intelligence feed.
               </p>
+              {physicalPreview && isPhysicalTrack && (
+                <div className="rounded-md border border-bg-surface p-4 text-sm">
+                  <p className="text-accent-muted mb-3 font-mono text-xs uppercase tracking-widest">Your Health Metrics</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-accent-muted text-xs">BMI</p>
+                      <p className="text-accent-white font-display text-2xl">{physicalPreview.bmi}</p>
+                    </div>
+                    <div>
+                      <p className="text-accent-muted text-xs">BMR</p>
+                      <p className="text-accent-white font-display text-2xl">{physicalPreview.bmr}</p>
+                    </div>
+                    <div>
+                      <p className="text-accent-muted text-xs">TDEE</p>
+                      <p className="text-accent-white font-display text-2xl">{physicalPreview.tdee}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="rounded-md border border-bg-surface p-4 text-sm">
                 <p className="text-accent-muted">Projected MYLI Score</p>
                 <p className="mt-2 text-3xl font-display text-accent-gold">{myliScore ?? '---'}</p>
@@ -679,14 +711,6 @@ export default function OnboardingPage() {
                 disabled={isLoading}
               >
                 {isLoading ? 'Saving...' : 'Begin Your Journey'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-12 w-full border-bg-surface text-accent-muted hover:text-accent-white"
-                onClick={() => window.location.assign('/dashboard')}
-              >
-                Go to Dashboard
               </Button>
             </div>
           )}

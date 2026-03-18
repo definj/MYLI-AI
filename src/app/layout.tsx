@@ -1,7 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, JetBrains_Mono, Playfair_Display, Geist } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { TopNav } from "@/components/app/top-nav";
+import { MobileNav } from "@/components/app/mobile-nav";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -25,6 +27,13 @@ export const metadata: Metadata = {
   description: "A premium, minimalist-luxury platform for lifestyle intelligence.",
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: '#0A0A0A',
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -35,7 +44,11 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${jetbrainsMono.variable} ${playfair.variable} antialiased selection:bg-accent-gold/30 selection:text-accent-white`}
       >
-        {children}
+        <TopNav />
+        <div className="pb-16 sm:pb-0">
+          {children}
+        </div>
+        <MobileNav />
       </body>
     </html>
   );

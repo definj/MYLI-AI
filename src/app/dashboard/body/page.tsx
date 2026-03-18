@@ -43,7 +43,11 @@ export default async function BodyDashboardPage() {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const [{ data: profile }, { data: physical }, { data: recentMeals }, { data: streaks }, { data: workoutLogs }] =
+  const fiveDaysAgo = new Date();
+  fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+  const todayDate = new Date().toISOString().split('T')[0];
+
+  const [{ data: profile }, { data: physical }, { data: recentMeals }, { data: streaks }, { data: workoutLogs }, { count: recentMealCount }, { data: latestVitamin }, { data: todayBrief }] =
     await Promise.all([
       supabase.from('profiles').select('myli_score, streak_count, track').eq('user_id', user.id).single(),
       supabase
@@ -66,6 +70,24 @@ export default async function BodyDashboardPage() {
         .eq('user_id', user.id)
         .order('date', { ascending: false })
         .limit(7),
+      supabase
+        .from('meal_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('logged_at', fiveDaysAgo.toISOString()),
+      supabase
+        .from('vitamin_analysis')
+        .select('generated_at')
+        .eq('user_id', user.id)
+        .order('generated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('daily_briefs')
+        .select('greeting, motivation')
+        .eq('user_id', user.id)
+        .eq('brief_date', todayDate)
+        .maybeSingle(),
     ]);
 
   const macroTotals = (recentMeals ?? []).reduce(
@@ -90,8 +112,8 @@ export default async function BodyDashboardPage() {
   const activeStreak = (streaks ?? []).find((s) => s.streak_type === 'workout') ?? null;
 
   return (
-    <main className="min-h-screen bg-bg-primary px-6 py-10 text-accent-white sm:px-10">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <main className="min-h-screen bg-bg-primary px-4 py-8 text-accent-white sm:px-10 sm:py-10">
+      <div className="mx-auto max-w-6xl space-y-5 sm:space-y-6">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.25em] text-accent-muted">Dashboard / Body</p>
           <h1 className="mt-3 font-display text-4xl">Physical Track Dashboard</h1>
@@ -99,6 +121,17 @@ export default async function BodyDashboardPage() {
             Today at a glance: fuel targets, workout consistency, and physical profile health metrics.
           </p>
         </div>
+
+        {todayBrief ? (
+          <Link href="/brief" className="block rounded-xl border border-accent-gold/20 bg-bg-surface/70 p-4 transition-colors hover:border-accent-gold/40">
+            <p className="text-sm text-accent-white">{todayBrief.greeting}</p>
+            <p className="mt-1 text-xs italic text-accent-gold">&ldquo;{todayBrief.motivation}&rdquo;</p>
+          </Link>
+        ) : (
+          <Link href="/brief" className="block rounded-xl border border-bg-surface bg-bg-surface/40 p-4 transition-colors hover:border-accent-gold/30">
+            <p className="text-sm text-accent-muted">Your daily brief is ready. Tap to generate today's personalized summary.</p>
+          </Link>
+        )}
 
         <div className="grid gap-4 md:grid-cols-3">
           <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
@@ -152,11 +185,15 @@ export default async function BodyDashboardPage() {
               </div>
               <div className="rounded-md bg-bg-secondary p-3">
                 <p className="text-accent-muted">BMI</p>
-                <p className="mt-1">{physical?.bmi ?? '--'}</p>
+                <p className="mt-1 font-display text-lg text-accent-gold">{physical?.bmi ?? '--'}</p>
               </div>
               <div className="rounded-md bg-bg-secondary p-3">
-                <p className="text-accent-muted">TDEE</p>
-                <p className="mt-1">{physical?.tdee ?? '--'}</p>
+                <p className="text-accent-muted">BMR</p>
+                <p className="mt-1 font-display text-lg text-accent-gold">{physical?.bmr ?? '--'}</p>
+              </div>
+              <div className="col-span-2 rounded-md bg-bg-secondary p-3">
+                <p className="text-accent-muted">TDEE (Daily Calories)</p>
+                <p className="mt-1 font-display text-lg text-accent-gold">{physical?.tdee ?? '--'}</p>
               </div>
             </div>
             <Link
@@ -164,6 +201,34 @@ export default async function BodyDashboardPage() {
               className="mt-5 inline-flex rounded-md border border-bg-surface bg-bg-secondary px-4 py-2 text-sm text-accent-white hover:bg-bg-primary"
             >
               View Workout Plans
+            </Link>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-accent-white">Vitamin & Nutrient Insights</p>
+              <p className="mt-1 text-sm text-accent-muted">
+                {(recentMealCount ?? 0) >= 5
+                  ? 'You have enough recent meals for a vitamin analysis.'
+                  : `Log ${5 - (recentMealCount ?? 0)} more meals in the next 5 days to unlock vitamin insights.`}
+              </p>
+              {latestVitamin?.generated_at && (
+                <p className="mt-1 text-xs text-accent-muted">
+                  Last report: {new Date(latestVitamin.generated_at).toLocaleDateString()}
+                </p>
+              )}
+            </div>
+            <Link
+              href="/insights/vitamins"
+              className={`inline-flex rounded-md px-4 py-2 text-sm font-medium ${
+                (recentMealCount ?? 0) >= 5
+                  ? 'bg-accent-gold text-bg-primary hover:bg-accent-gold/90'
+                  : 'bg-bg-secondary text-accent-muted'
+              }`}
+            >
+              View Insights
             </Link>
           </div>
         </div>
