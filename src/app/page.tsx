@@ -20,13 +20,13 @@ export default async function Home() {
   const { data: { user } } = await supabase.auth.getUser()
 
   if (user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('onboarding_complete')
-      .eq('user_id', user.id)
-      .single()
+    const [{ data: profile }, { data: physicalProfile }, { data: mentalProfile }] = await Promise.all([
+      supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).single(),
+      supabase.from('physical_profiles').select('id').eq('user_id', user.id).single(),
+      supabase.from('mental_profiles').select('id').eq('user_id', user.id).single(),
+    ])
 
-    if (profile?.onboarding_complete) {
+    if (profile?.onboarding_complete || physicalProfile || mentalProfile) {
       redirect('/dashboard')
     }
   }

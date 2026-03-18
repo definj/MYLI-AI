@@ -41,14 +41,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && isOnboardingPath(pathname)) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('onboarding_complete')
-      .eq('user_id', user.id)
-      .single()
+  if (user && (isOnboardingPath(pathname) || (!isPublicPath(pathname)))) {
+    const [{ data: profile }, { data: physicalProfile }, { data: mentalProfile }] = await Promise.all([
+      supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).single(),
+      supabase.from('physical_profiles').select('id').eq('user_id', user.id).single(),
+      supabase.from('mental_profiles').select('id').eq('user_id', user.id).single(),
+    ])
 
-    if (profile?.onboarding_complete) {
+    const hasExistingData = profile?.onboarding_complete || physicalProfile || mentalProfile
+
+    if (hasExistingData && !profile?.onboarding_complete) {
+      await supabase.from('profiles').upsert(
+        { user_id: user.id, onboarding_complete: true, last_active: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      )
+    }
+
+    if (isOnboardingPath(pathname) && hasExistingData) {
       const url = request.nextUrl.clone()
       const next = request.nextUrl.searchParams.get('next')
       if (next && isDashboardPath(next)) {
@@ -60,16 +69,8 @@ export async function middleware(request: NextRequest) {
       url.search = ''
       return NextResponse.redirect(url)
     }
-  }
 
-  if (user && !isPublicPath(pathname) && !isOnboardingPath(pathname)) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('onboarding_complete')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!profile?.onboarding_complete) {
+    if (!isPublicPath(pathname) && !isOnboardingPath(pathname) && !hasExistingData) {
       const url = request.nextUrl.clone()
       url.pathname = '/onboarding'
       url.searchParams.set('next', pathname)

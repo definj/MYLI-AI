@@ -94,13 +94,21 @@ export default function OnboardingPage() {
           setCheckingAuth(false);
           return;
         }
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('onboarding_complete')
-          .eq('user_id', user.id)
-          .single();
+        const [{ data: profile }, { data: physicalProfile }, { data: mentalProfile }] = await Promise.all([
+          supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).single(),
+          supabase.from('physical_profiles').select('id').eq('user_id', user.id).single(),
+          supabase.from('mental_profiles').select('id').eq('user_id', user.id).single(),
+        ]);
 
-        if (profile?.onboarding_complete) {
+        const hasExistingData = profile?.onboarding_complete || physicalProfile || mentalProfile;
+
+        if (hasExistingData) {
+          if (!profile?.onboarding_complete) {
+            await supabase.from('profiles').upsert(
+              { user_id: user.id, onboarding_complete: true, last_active: new Date().toISOString() },
+              { onConflict: 'user_id' }
+            );
+          }
           setRedirecting(true);
           window.location.assign('/dashboard');
         } else {
@@ -236,13 +244,21 @@ export default function OnboardingPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('onboarding_complete')
-        .eq('user_id', user.id)
-        .single();
+      const [{ data: profile }, { data: physicalProfile }, { data: mentalProfile }] = await Promise.all([
+        supabase.from('profiles').select('onboarding_complete').eq('user_id', user.id).single(),
+        supabase.from('physical_profiles').select('id').eq('user_id', user.id).single(),
+        supabase.from('mental_profiles').select('id').eq('user_id', user.id).single(),
+      ]);
 
-      if (profile?.onboarding_complete) {
+      const hasExistingData = profile?.onboarding_complete || physicalProfile || mentalProfile;
+
+      if (hasExistingData) {
+        if (!profile?.onboarding_complete) {
+          await supabase.from('profiles').upsert(
+            { user_id: user.id, onboarding_complete: true, last_active: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
+        }
         setRedirecting(true);
         setMessage({ type: 'success', text: 'Welcome back! Redirecting to dashboard...' });
         window.location.assign('/dashboard');
