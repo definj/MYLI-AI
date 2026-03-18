@@ -53,7 +53,7 @@ MYLI is a premium, minimalist-luxury full-stack web application designed for com
 
 ---
 
-## Onboarding Update
+## Onboarding Update 3/18
 
 The onboarding flow (`src/app/onboarding/page.tsx`) was overhauled with the following changes:
 
