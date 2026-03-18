@@ -1,9 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FeatureShell } from '@/components/app/feature-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { WeeklyCalendar } from '@/components/app/weekly-calendar';
+import { useWeekCalendar } from '@/hooks/use-week-calendar';
+import { createClient } from '@/lib/supabase/client';
 
 type AnalysisResponse = {
   description: string;
@@ -17,6 +20,17 @@ type AnalysisResponse = {
   warning?: string;
 };
 
+type MealLog = {
+  id: string;
+  meal_type: string | null;
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  ai_description: string | null;
+  logged_at: string;
+};
+
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 
 export default function MealsPage() {
@@ -26,6 +40,44 @@ export default function MealsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  const [dayMeals, setDayMeals] = useState<MealLog[]>([]);
+  const [dayLoading, setDayLoading] = useState(false);
+
+  const buildDots = useCallback(
+    (day: { meals: number; workouts: number; tasks: { pending: number; completed: number } }) => {
+      const dots: Array<{ color: string; label: string }> = [];
+      if (day.meals > 0) dots.push({ color: 'bg-emerald-400', label: `${day.meals} meal${day.meals > 1 ? 's' : ''}` });
+      return dots;
+    },
+    []
+  );
+
+  const { selectedDate, setSelectedDate, weekOffset, setWeekOffset, activityMap, refresh } =
+    useWeekCalendar(buildDots);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDayLoading(true);
+    const supabase = createClient();
+    const startIso = `${selectedDate}T00:00:00.000Z`;
+    const endIso = `${selectedDate}T23:59:59.999Z`;
+
+    supabase
+      .from('meal_logs')
+      .select('id, meal_type, calories, protein_g, carbs_g, fat_g, ai_description, logged_at')
+      .gte('logged_at', startIso)
+      .lte('logged_at', endIso)
+      .order('logged_at', { ascending: false })
+      .then(({ data }) => {
+        if (!cancelled) {
+          setDayMeals((data ?? []) as MealLog[]);
+          setDayLoading(false);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedDate, saved]);
 
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
 
@@ -47,6 +99,7 @@ export default function MealsPage() {
     const body = (await response.json()) as AnalysisResponse;
     setAnalysis(body);
     setSaved(true);
+    refresh();
   };
 
   const reset = () => {
@@ -62,6 +115,14 @@ export default function MealsPage() {
       title="Meal Logging"
       description="Capture a photo of your meal and let AI analyze the macros. Results are automatically saved to your nutrition log."
     >
+      <WeeklyCalendar
+        selectedDate={selectedDate}
+        onDateSelect={setSelectedDate}
+        weekOffset={weekOffset}
+        onWeekChange={setWeekOffset}
+        activityMap={activityMap}
+      />
+
       <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-6">
         <div className="space-y-4">
           <div className="flex gap-2">
@@ -155,6 +216,41 @@ export default function MealsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Meal history for selected day */}
+      <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
+        <p className="text-sm font-medium text-accent-white mb-3">
+          Meals on {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+        </p>
+        {dayLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-16 animate-pulse rounded-md bg-bg-secondary" />
+            ))}
+          </div>
+        ) : dayMeals.length === 0 ? (
+          <p className="text-sm text-accent-muted">No meals logged on this day.</p>
+        ) : (
+          <div className="space-y-2">
+            {dayMeals.map((meal) => (
+              <div key={meal.id} className="flex items-center justify-between rounded-md bg-bg-secondary px-4 py-3 text-sm">
+                <div>
+                  <p className="text-accent-white capitalize">{meal.meal_type ?? 'Meal'}</p>
+                  {meal.ai_description && (
+                    <p className="mt-0.5 text-xs text-accent-muted line-clamp-1">{meal.ai_description}</p>
+                  )}
+                </div>
+                <div className="flex gap-3 text-xs font-mono text-accent-muted">
+                  <span className="text-accent-gold">{meal.calories ?? 0} cal</span>
+                  <span>{meal.protein_g ?? 0}p</span>
+                  <span>{meal.carbs_g ?? 0}c</span>
+                  <span>{meal.fat_g ?? 0}f</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </FeatureShell>
   );

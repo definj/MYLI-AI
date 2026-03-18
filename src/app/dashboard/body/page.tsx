@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { DashboardBodyCalendar } from '@/components/features/dashboard-body-calendar';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,6 +122,8 @@ export default async function BodyDashboardPage() {
             Today at a glance: fuel targets, workout consistency, and physical profile health metrics.
           </p>
         </div>
+
+        <DashboardBodyCalendar />
 
         {todayBrief ? (
           <Link href="/brief" className="block rounded-xl border border-accent-gold/20 bg-bg-surface/70 p-4 transition-colors hover:border-accent-gold/40">

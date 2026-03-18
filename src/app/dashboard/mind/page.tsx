@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { DashboardMindCalendar } from '@/components/features/dashboard-mind-calendar';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +66,8 @@ export default async function MindDashboardPage() {
             Focus planning, task execution, and mental energy markers in one daily view.
           </p>
         </div>
+
+        <DashboardMindCalendar />
 
         {todayBrief ? (
           <Link href="/brief" className="block rounded-xl border border-accent-gold/20 bg-bg-surface/70 p-4 transition-colors hover:border-accent-gold/40">

@@ -1,8 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FeatureShell } from '@/components/app/feature-shell';
 import { Button } from '@/components/ui/button';
+import { WeeklyCalendar } from '@/components/app/weekly-calendar';
+import { useWeekCalendar } from '@/hooks/use-week-calendar';
+import { createClient } from '@/lib/supabase/client';
 
 type Exercise = {
   exercise: string;
@@ -21,6 +24,15 @@ type Tier = {
 type PlanPayload = {
   tiers: Tier[];
   note: string;
+};
+
+type WorkoutLog = {
+  id: string;
+  date: string;
+  duration_min: number | null;
+  completed: boolean;
+  exercises: unknown;
+  notes: string | null;
 };
 
 function TierCard({ tier, isActive, onSelect }: { tier: Tier; isActive: boolean; onSelect: () => void }) {
@@ -72,6 +84,41 @@ export default function WorkoutsPage() {
   const [activeTier, setActiveTier] = useState<number>(2);
   const [error, setError] = useState<string | null>(null);
 
+  const [dayWorkouts, setDayWorkouts] = useState<WorkoutLog[]>([]);
+  const [dayLoading, setDayLoading] = useState(false);
+
+  const buildDots = useCallback(
+    (day: { meals: number; workouts: number; tasks: { pending: number; completed: number } }) => {
+      const dots: Array<{ color: string; label: string }> = [];
+      if (day.workouts > 0) dots.push({ color: 'bg-blue-400', label: `${day.workouts} workout${day.workouts > 1 ? 's' : ''}` });
+      return dots;
+    },
+    []
+  );
+
+  const { selectedDate, setSelectedDate, weekOffset, setWeekOffset, activityMap } =
+    useWeekCalendar(buildDots);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDayLoading(true);
+    const supabase = createClient();
+
+    supabase
+      .from('workout_logs')
+      .select('id, date, duration_min, completed, exercises, notes')
+      .eq('date', selectedDate)
+      .order('date', { ascending: false })
+      .then(({ data }) => {
+        if (!cancelled) {
+          setDayWorkouts((data ?? []) as WorkoutLog[]);
+          setDayLoading(false);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedDate]);
+
   const generatePlans = async () => {
     setError(null);
     setIsLoading(true);
@@ -93,6 +140,14 @@ export default function WorkoutsPage() {
       title="Workout Plans"
       description="Generate AI-personalized workout plan tiers based on your physical profile and goals."
     >
+      <WeeklyCalendar
+        selectedDate={selectedDate}
+        onDateSelect={setSelectedDate}
+        weekOffset={weekOffset}
+        onWeekChange={setWeekOffset}
+        activityMap={activityMap}
+      />
+
       <div className="space-y-4">
         <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-6">
           <Button
@@ -119,6 +174,42 @@ export default function WorkoutsPage() {
                 onSelect={() => setActiveTier(idx)}
               />
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Workout logs for selected day */}
+      <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
+        <p className="text-sm font-medium text-accent-white mb-3">
+          Workouts on {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+        </p>
+        {dayLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-16 animate-pulse rounded-md bg-bg-secondary" />
+            ))}
+          </div>
+        ) : dayWorkouts.length === 0 ? (
+          <p className="text-sm text-accent-muted">No workouts logged on this day.</p>
+        ) : (
+          <div className="space-y-2">
+            {dayWorkouts.map((w) => {
+              const exerciseCount = Array.isArray(w.exercises) ? w.exercises.length : 0;
+              return (
+                <div key={w.id} className="flex items-center justify-between rounded-md bg-bg-secondary px-4 py-3 text-sm">
+                  <div>
+                    <p className="text-accent-white">
+                      {w.duration_min ? `${w.duration_min} min` : 'Session'}
+                      {exerciseCount > 0 && ` — ${exerciseCount} exercise${exerciseCount > 1 ? 's' : ''}`}
+                    </p>
+                    {w.notes && <p className="mt-0.5 text-xs text-accent-muted line-clamp-1">{w.notes}</p>}
+                  </div>
+                  <span className={`font-mono text-xs uppercase ${w.completed ? 'text-success' : 'text-amber-400'}`}>
+                    {w.completed ? 'Done' : 'Incomplete'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
