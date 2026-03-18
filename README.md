@@ -8,7 +8,7 @@ MYLI is a premium, minimalist-luxury full-stack web application designed for com
 - **Backend & Auth**: Supabase (Postgres, Auth, Realtime, Storage)
 - **AI Integration**: Anthropic Claude API (claude-sonnet-4-20250514), Claude Vision API
 
-## Development Order & Progress
+## Development Order & Progress.
 
 ### ✅ Phase 1 — Foundation (Completed)
 - [x] 1. Next.js project setup with Tailwind, Framer Motion, TypeScript
