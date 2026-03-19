@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { FeatureShell } from '@/components/app/feature-shell';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { WeeklyCalendar } from '@/components/app/weekly-calendar';
 import { useWeekCalendar } from '@/hooks/use-week-calendar';
 import { createClient } from '@/lib/supabase/client';
@@ -19,6 +21,16 @@ type Tier = {
   weekly_days: number;
   focus: string;
   sample_day: Exercise[];
+  week_plan?: {
+    week_start: string;
+    split_name: string;
+    days: Array<{
+      date: string;
+      title: string;
+      focus: string;
+      exercises: Exercise[];
+    }>;
+  };
 };
 
 type PlanPayload = {
@@ -83,6 +95,8 @@ export default function WorkoutsPage() {
   const [plans, setPlans] = useState<PlanPayload | null>(null);
   const [activeTier, setActiveTier] = useState<number>(2);
   const [error, setError] = useState<string | null>(null);
+  const [equipment, setEquipment] = useState('');
+  const [trainingStyle, setTrainingStyle] = useState('');
 
   const [dayWorkouts, setDayWorkouts] = useState<WorkoutLog[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
@@ -122,7 +136,15 @@ export default function WorkoutsPage() {
   const generatePlans = async () => {
     setError(null);
     setIsLoading(true);
-    const response = await fetch('/api/workouts/generate', { method: 'POST' });
+    const response = await fetch('/api/workouts/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        scope: 'week',
+        equipment,
+        training_style: trainingStyle,
+      }),
+    });
     setIsLoading(false);
     if (!response.ok) {
       const body = await response.json().catch(() => ({ error: 'Failed to generate plans.' }));
@@ -150,6 +172,26 @@ export default function WorkoutsPage() {
 
       <div className="space-y-4">
         <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-6">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <p className="text-xs text-accent-muted mb-1">What equipment do you have access to?</p>
+              <Input
+                value={equipment}
+                onChange={(e) => setEquipment(e.target.value)}
+                placeholder="e.g. full gym, dumbbells only, hotel gym, bands, pull-up bar..."
+                className="h-11 bg-bg-secondary border-none text-accent-white placeholder:text-accent-muted"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-accent-muted mb-1">How do you typically train?</p>
+              <Input
+                value={trainingStyle}
+                onChange={(e) => setTrainingStyle(e.target.value)}
+                placeholder="e.g. 45 min sessions, prefer machines, minimal cardio, like supersets..."
+                className="h-11 bg-bg-secondary border-none text-accent-white placeholder:text-accent-muted"
+              />
+            </div>
+          </div>
           <Button
             type="button"
             className="bg-accent-gold text-bg-primary hover:bg-accent-gold/90"
@@ -174,6 +216,44 @@ export default function WorkoutsPage() {
                 onSelect={() => setActiveTier(idx)}
               />
             ))}
+          </div>
+        )}
+
+        {plans?.tiers?.[activeTier]?.week_plan?.days && (
+          <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-6">
+            <div className="flex items-baseline justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-accent-white">This week’s split</p>
+                <p className="text-xs text-accent-muted">{plans.tiers[activeTier].week_plan?.split_name}</p>
+              </div>
+              <p className="text-xs text-accent-muted">
+                Week of {plans.tiers[activeTier].week_plan?.week_start}
+              </p>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {plans.tiers[activeTier].week_plan!.days.map((day) => (
+                <div key={day.date} className="rounded-lg border border-bg-surface bg-bg-secondary p-4">
+                  <div className="flex items-center justify-between">
+                    <Link href={`/workouts/day/${day.date}`} className="text-sm font-medium text-accent-white hover:underline">
+                      {day.title}
+                    </Link>
+                    <p className="text-xs font-mono text-accent-muted">{day.date}</p>
+                  </div>
+                  <p className="mt-1 text-xs text-accent-muted">{day.focus}</p>
+                  <div className="mt-3 space-y-2">
+                    {day.exercises.slice(0, 5).map((ex) => (
+                      <div key={ex.exercise} className="flex items-center justify-between rounded-md bg-bg-primary px-3 py-2 text-xs">
+                        <span className="text-accent-white">{ex.exercise}</span>
+                        <span className="font-mono text-accent-muted">{ex.sets}x{ex.reps}</span>
+                      </div>
+                    ))}
+                    {day.exercises.length > 5 && (
+                      <p className="text-xs text-accent-muted">+ {day.exercises.length - 5} more</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
