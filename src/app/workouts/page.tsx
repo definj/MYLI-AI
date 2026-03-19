@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { FeatureShell } from '@/components/app/feature-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,15 +46,30 @@ type WorkoutLog = {
   notes: string | null;
 };
 
-function TierCard({ tier, isActive, onSelect }: { tier: Tier; isActive: boolean; onSelect: () => void }) {
+function TierCard({
+  tier,
+  isSelected,
+  isActivated,
+  onSelect,
+}: {
+  tier: Tier;
+  isSelected: boolean;
+  isActivated: boolean;
+  onSelect: () => void;
+}) {
   return (
     <div
       className={`rounded-xl border p-5 transition-colors ${
-        isActive
+        isSelected
           ? 'border-accent-gold bg-bg-surface/70'
           : 'border-bg-surface bg-bg-surface/40 hover:border-accent-gold/40'
       }`}
     >
+      {isActivated && (
+        <span className="float-right rounded-md bg-success/15 px-2 py-1 font-mono text-xs text-success">
+          Active Plan
+        </span>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <p className="font-mono text-xs uppercase tracking-widest text-accent-muted">{tier.intensity}</p>
@@ -63,12 +77,12 @@ function TierCard({ tier, isActive, onSelect }: { tier: Tier; isActive: boolean;
         </div>
         <Button
           type="button"
-          className={isActive
+          className={isSelected
             ? 'bg-accent-gold text-bg-primary hover:bg-accent-gold/90'
             : 'bg-bg-secondary text-accent-muted hover:text-accent-white'}
           onClick={onSelect}
         >
-          {isActive ? 'Active' : 'Select'}
+          {isSelected ? 'Selected' : 'Select'}
         </Button>
       </div>
       <p className="mt-3 text-sm text-accent-muted">{tier.focus}</p>
@@ -94,6 +108,8 @@ export default function WorkoutsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [plans, setPlans] = useState<PlanPayload | null>(null);
   const [activeTier, setActiveTier] = useState<number>(2);
+  const [activatedTier, setActivatedTier] = useState<number | null>(null);
+  const [activeDays, setActiveDays] = useState<Record<string, { title: string; focus: string; exercises: Exercise[] }>>({});
   const [error, setError] = useState<string | null>(null);
   const [equipment, setEquipment] = useState('');
   const [trainingStyle, setTrainingStyle] = useState('');
@@ -103,36 +119,37 @@ export default function WorkoutsPage() {
   const [dayLoading, setDayLoading] = useState(false);
 
   const buildDots = useCallback(
-    (day: { meals: number; workouts: number; tasks: { pending: number; completed: number } }) => {
+    (day: { meals: number; workouts: number; tasks: { pending: number; completed: number } }, date?: string) => {
       const dots: Array<{ color: string; label: string }> = [];
       if (day.workouts > 0) dots.push({ color: 'bg-blue-400', label: `${day.workouts} workout${day.workouts > 1 ? 's' : ''}` });
+      if (date && activeDays[date]) {
+        dots.push({ color: 'bg-accent-gold', label: activeDays[date].title });
+      }
       return dots;
     },
-    []
+    [activeDays]
+  );
+
+  const buildDotsForHook = useCallback(
+    (day: { meals: number; workouts: number; tasks: { pending: number; completed: number } }) => buildDots(day),
+    [buildDots]
   );
 
   const { selectedDate, setSelectedDate, weekOffset, setWeekOffset, activityMap } =
-    useWeekCalendar(buildDots);
-
-  const activeWeekDays = plans?.tiers?.[activeTier]?.week_plan?.days ?? [];
-  const selectedPlannedDay = useMemo(
-    () => activeWeekDays.find((d) => d.date === selectedDate) ?? null,
-    [activeWeekDays, selectedDate]
-  );
+    useWeekCalendar(buildDotsForHook);
 
   const calendarActivityMap = useMemo(() => {
     const merged: typeof activityMap = { ...activityMap };
-    for (const day of activeWeekDays) {
-      const isRecovery = /rest|recovery/i.test(day.title);
-      const dot = {
-        color: isRecovery ? 'bg-slate-400' : 'bg-blue-400',
-        label: isRecovery ? 'Planned recovery' : 'Planned workout',
+    for (const [date, planned] of Object.entries(activeDays)) {
+      const existing = merged[date]?.dots ?? [];
+      merged[date] = {
+        dots: [...existing, { color: 'bg-accent-gold', label: planned.title }],
       };
-      const existing = merged[day.date]?.dots ?? [];
-      merged[day.date] = { dots: [...existing, dot] };
     }
     return merged;
-  }, [activityMap, activeWeekDays]);
+  }, [activityMap, activeDays]);
+
+  const selectedActiveDay = activeDays[selectedDate] ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +192,25 @@ export default function WorkoutsPage() {
     const data = (await response.json()) as PlanPayload;
     setPlans(data);
     setActiveTier(data.tiers.length - 1);
+    setActivatedTier(null);
+    setActiveDays({});
+  };
+
+  const activatePlan = () => {
+    if (!plans) return;
+    const tier = plans.tiers[activeTier];
+    const days = tier.week_plan?.days ?? [];
+    if (days.length === 0) {
+      setError('This tier does not have a 7-day plan yet. Try regenerating.');
+      return;
+    }
+    const next: Record<string, { title: string; focus: string; exercises: Exercise[] }> = {};
+    for (const d of days) {
+      next[d.date] = { title: d.title, focus: d.focus, exercises: d.exercises };
+    }
+    setActiveDays(next);
+    setActivatedTier(activeTier);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const regenerateDay = async (date: string) => {
@@ -209,6 +245,14 @@ export default function WorkoutsPage() {
         );
         return { ...prev, tiers };
       });
+
+      if (activatedTier === activeTier && result.week_plan?.days) {
+        const next: Record<string, { title: string; focus: string; exercises: Exercise[] }> = {};
+        for (const d of result.week_plan.days) {
+          next[d.date] = { title: d.title, focus: d.focus, exercises: d.exercises };
+        }
+        setActiveDays(next);
+      }
     } finally {
       setRegeneratingDate(null);
     }
@@ -229,25 +273,25 @@ export default function WorkoutsPage() {
       />
 
       <div className="space-y-4">
-        {selectedPlannedDay && (
+        {selectedActiveDay && (
           <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="text-lg font-medium text-accent-white">{selectedPlannedDay.title}</p>
-                  {/rest|recovery/i.test(selectedPlannedDay.title) && (
+                  <p className="text-accent-white font-medium">{selectedActiveDay.title}</p>
+                  {/rest|recovery/i.test(selectedActiveDay.title) && (
                     <span className="rounded-md bg-bg-secondary px-2 py-1 text-xs text-accent-muted">Recovery Day</span>
                   )}
                 </div>
-                <p className="mt-1 text-sm text-accent-muted">{selectedPlannedDay.focus}</p>
+                <p className="mt-1 text-sm text-accent-muted">{selectedActiveDay.focus}</p>
               </div>
             </div>
 
             <div className="mt-4 space-y-2">
-              {selectedPlannedDay.exercises.length === 0 ? (
+              {selectedActiveDay.exercises.length === 0 ? (
                 <p className="text-sm text-accent-muted italic">Recovery Day</p>
               ) : (
-                selectedPlannedDay.exercises.map((ex) => (
+                selectedActiveDay.exercises.map((ex) => (
                   <div
                     key={ex.exercise}
                     className="flex items-center justify-between rounded-md bg-bg-secondary px-4 py-3 text-sm"
@@ -264,11 +308,11 @@ export default function WorkoutsPage() {
             <div className="mt-4 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => regenerateDay(selectedPlannedDay.date)}
-                disabled={regeneratingDate === selectedPlannedDay.date || isLoading}
+                onClick={() => regenerateDay(selectedDate)}
+                disabled={regeneratingDate === selectedDate || isLoading}
                 className="rounded-md bg-bg-primary px-4 py-2 text-xs text-accent-muted hover:text-accent-white transition-colors disabled:opacity-40"
               >
-                {regeneratingDate === selectedPlannedDay.date ? 'Regenerating...' : '↺ Regenerate this day'}
+                {regeneratingDate === selectedDate ? 'Regenerating...' : '↺ Regenerate this day'}
               </button>
             </div>
           </div>
@@ -311,14 +355,32 @@ export default function WorkoutsPage() {
 
         {plans && (
           <div className="grid gap-4 lg:grid-cols-3">
-            {plans.tiers.map((tier, idx) => (
-              <TierCard
-                key={tier.intensity}
-                tier={tier}
-                isActive={idx === activeTier}
-                onSelect={() => setActiveTier(idx)}
-              />
-            ))}
+            {plans.tiers.map((tier, idx) => {
+              const isSelected = idx === activeTier;
+              const isActivated = activatedTier === idx;
+              return (
+                <div key={tier.intensity} className="space-y-3">
+                  <TierCard
+                    tier={tier}
+                    isSelected={isSelected}
+                    isActivated={isActivated}
+                    onSelect={() => setActiveTier(idx)}
+                  />
+                  {plans && isSelected && (
+                    <Button
+                      type="button"
+                      className="h-14 w-full bg-accent-gold text-bg-primary hover:bg-accent-gold/90"
+                      onClick={activatePlan}
+                      disabled={!tier.week_plan?.days || tier.week_plan.days.length === 0}
+                    >
+                      {activatedTier != null && activatedTier !== activeTier
+                        ? `Switch to This Plan — ${tier.weekly_days} Days / Week`
+                        : `Create This Plan — ${tier.weekly_days} Days / Week`}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -350,17 +412,25 @@ export default function WorkoutsPage() {
                 const isRegenerating = regeneratingDate === day.date;
                 return (
                 <div key={day.date} className="rounded-lg border border-bg-surface bg-bg-secondary p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Link href={`/workouts/day/${day.date}`} className="text-sm font-medium text-accent-white hover:underline">
-                        {day.title}
-                      </Link>
-                      {isRestDay && (
-                        <span className="rounded-md bg-bg-primary px-2 py-0.5 text-[11px] text-accent-muted">Recovery</span>
-                      )}
+                  <button
+                    type="button"
+                    className="w-full text-left"
+                    onClick={() => {
+                      setSelectedDate(day.date);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-accent-white">{day.title}</span>
+                        {isRestDay && (
+                          <span className="rounded-md bg-bg-primary px-2 py-0.5 text-[11px] text-accent-muted">Recovery</span>
+                        )}
+                      </div>
+                      <p className="text-xs font-mono text-accent-muted">{day.date}</p>
                     </div>
-                    <p className="text-xs font-mono text-accent-muted">{day.date}</p>
-                  </div>
+                    <p className="mt-1 text-xs text-accent-muted">{day.focus}</p>
+                  </button>
                   <p className="mt-1 text-xs text-accent-muted">{day.focus}</p>
                   <div className="mt-3 space-y-2">
                     {day.exercises.map((ex) => (
@@ -390,40 +460,42 @@ export default function WorkoutsPage() {
       </div>
 
       {/* Workout logs for selected day */}
-      <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
-        <p className="text-sm font-medium text-accent-white mb-3">
-          Workouts on {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-        </p>
-        {dayLoading ? (
-          <div className="space-y-2">
-            {[1, 2].map((i) => (
-              <div key={i} className="h-16 animate-pulse rounded-md bg-bg-secondary" />
-            ))}
-          </div>
-        ) : dayWorkouts.length === 0 ? (
-          <p className="text-sm text-accent-muted">No workouts logged on this day.</p>
-        ) : (
-          <div className="space-y-2">
-            {dayWorkouts.map((w) => {
-              const exerciseCount = Array.isArray(w.exercises) ? w.exercises.length : 0;
-              return (
-                <div key={w.id} className="flex items-center justify-between rounded-md bg-bg-secondary px-4 py-3 text-sm">
-                  <div>
-                    <p className="text-accent-white">
-                      {w.duration_min ? `${w.duration_min} min` : 'Session'}
-                      {exerciseCount > 0 && ` — ${exerciseCount} exercise${exerciseCount > 1 ? 's' : ''}`}
-                    </p>
-                    {w.notes && <p className="mt-0.5 text-xs text-accent-muted line-clamp-1">{w.notes}</p>}
+      {!selectedActiveDay && (
+        <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
+          <p className="text-sm font-medium text-accent-white mb-3">
+            Workouts on {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+          </p>
+          {dayLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <div key={i} className="h-16 animate-pulse rounded-md bg-bg-secondary" />
+              ))}
+            </div>
+          ) : dayWorkouts.length === 0 ? (
+            <p className="text-sm text-accent-muted">No workouts logged on this day.</p>
+          ) : (
+            <div className="space-y-2">
+              {dayWorkouts.map((w) => {
+                const exerciseCount = Array.isArray(w.exercises) ? w.exercises.length : 0;
+                return (
+                  <div key={w.id} className="flex items-center justify-between rounded-md bg-bg-secondary px-4 py-3 text-sm">
+                    <div>
+                      <p className="text-accent-white">
+                        {w.duration_min ? `${w.duration_min} min` : 'Session'}
+                        {exerciseCount > 0 && ` — ${exerciseCount} exercise${exerciseCount > 1 ? 's' : ''}`}
+                      </p>
+                      {w.notes && <p className="mt-0.5 text-xs text-accent-muted line-clamp-1">{w.notes}</p>}
+                    </div>
+                    <span className={`font-mono text-xs uppercase ${w.completed ? 'text-success' : 'text-amber-400'}`}>
+                      {w.completed ? 'Done' : 'Incomplete'}
+                    </span>
                   </div>
-                  <span className={`font-mono text-xs uppercase ${w.completed ? 'text-success' : 'text-amber-400'}`}>
-                    {w.completed ? 'Done' : 'Incomplete'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </FeatureShell>
   );
 }
