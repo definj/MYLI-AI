@@ -297,7 +297,7 @@ Return a single JSON object (no markdown, no explanation) with this exact struct
             ]
           }
         ]
-      ]
+      }
     }
   ],
   "note": "Brief explanation of the programming approach"
@@ -321,7 +321,10 @@ Training day rules:
 - Match goal: ${physicalProfile?.goal ?? 'general fitness'}.
 - Avoid repeating identical sessions back-to-back.
 - All 7 days must have a date matching the week of ${weekStart}.
-- Each tier's week_plan must contain EXACTLY 7 days total (training + rest combined).`; 
+- Every tier must include week_plan with week_plan.days containing EXACTLY 7 day objects (one per date) for the week of ${weekStart}.
+- Tier 1 must have exactly 3 training days + 4 rest/recovery days.
+- Tier 2 must have exactly 4-5 training days + 2-3 rest/recovery days.
+- Tier 3 must have exactly 5-6 training days + 1-2 rest/recovery days.`; 
 
   const ai = await callAnthropicText(
     [{ role: 'user', content: prompt }],

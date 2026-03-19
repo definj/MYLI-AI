@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { FeatureShell } from '@/components/app/feature-shell';
 import { Button } from '@/components/ui/button';
@@ -80,7 +80,7 @@ function TierCard({ tier, isActive, onSelect }: { tier: Tier; isActive: boolean;
             <div key={ex.exercise} className="flex items-center justify-between rounded-md bg-bg-secondary px-3 py-2 text-sm">
               <span className="text-accent-white">{ex.exercise}</span>
               <span className="font-mono text-xs text-accent-muted">
-                {ex.sets} x {ex.reps} &middot; {ex.rest_sec}s rest
+                {ex.sets} x {ex.reps}
               </span>
             </div>
           ))}
@@ -113,6 +113,26 @@ export default function WorkoutsPage() {
 
   const { selectedDate, setSelectedDate, weekOffset, setWeekOffset, activityMap } =
     useWeekCalendar(buildDots);
+
+  const activeWeekDays = plans?.tiers?.[activeTier]?.week_plan?.days ?? [];
+  const selectedPlannedDay = useMemo(
+    () => activeWeekDays.find((d) => d.date === selectedDate) ?? null,
+    [activeWeekDays, selectedDate]
+  );
+
+  const calendarActivityMap = useMemo(() => {
+    const merged: typeof activityMap = { ...activityMap };
+    for (const day of activeWeekDays) {
+      const isRecovery = /rest|recovery/i.test(day.title);
+      const dot = {
+        color: isRecovery ? 'bg-slate-400' : 'bg-blue-400',
+        label: isRecovery ? 'Planned recovery' : 'Planned workout',
+      };
+      const existing = merged[day.date]?.dots ?? [];
+      merged[day.date] = { dots: [...existing, dot] };
+    }
+    return merged;
+  }, [activityMap, activeWeekDays]);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,10 +225,55 @@ export default function WorkoutsPage() {
         onDateSelect={setSelectedDate}
         weekOffset={weekOffset}
         onWeekChange={setWeekOffset}
-        activityMap={activityMap}
+        activityMap={calendarActivityMap}
       />
 
       <div className="space-y-4">
+        {selectedPlannedDay && (
+          <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-lg font-medium text-accent-white">{selectedPlannedDay.title}</p>
+                  {/rest|recovery/i.test(selectedPlannedDay.title) && (
+                    <span className="rounded-md bg-bg-secondary px-2 py-1 text-xs text-accent-muted">Recovery Day</span>
+                  )}
+                </div>
+                <p className="mt-1 text-sm text-accent-muted">{selectedPlannedDay.focus}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {selectedPlannedDay.exercises.length === 0 ? (
+                <p className="text-sm text-accent-muted italic">Recovery Day</p>
+              ) : (
+                selectedPlannedDay.exercises.map((ex) => (
+                  <div
+                    key={ex.exercise}
+                    className="flex items-center justify-between rounded-md bg-bg-secondary px-4 py-3 text-sm"
+                  >
+                    <span className="text-accent-white">{ex.exercise}</span>
+                    <span className="font-mono text-xs text-accent-muted">
+                      {ex.sets} x {ex.reps}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => regenerateDay(selectedPlannedDay.date)}
+                disabled={regeneratingDate === selectedPlannedDay.date || isLoading}
+                className="rounded-md bg-bg-primary px-4 py-2 text-xs text-accent-muted hover:text-accent-white transition-colors disabled:opacity-40"
+              >
+                {regeneratingDate === selectedPlannedDay.date ? 'Regenerating...' : '↺ Regenerate this day'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-6">
           <div className="grid gap-3 md:grid-cols-2">
             <div>
@@ -286,22 +351,24 @@ export default function WorkoutsPage() {
                 return (
                 <div key={day.date} className="rounded-lg border border-bg-surface bg-bg-secondary p-4">
                   <div className="flex items-center justify-between">
-                    <Link href={`/workouts/day/${day.date}`} className="text-sm font-medium text-accent-white hover:underline">
-                      {day.title}
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link href={`/workouts/day/${day.date}`} className="text-sm font-medium text-accent-white hover:underline">
+                        {day.title}
+                      </Link>
+                      {isRestDay && (
+                        <span className="rounded-md bg-bg-primary px-2 py-0.5 text-[11px] text-accent-muted">Recovery</span>
+                      )}
+                    </div>
                     <p className="text-xs font-mono text-accent-muted">{day.date}</p>
                   </div>
                   <p className="mt-1 text-xs text-accent-muted">{day.focus}</p>
                   <div className="mt-3 space-y-2">
-                    {day.exercises.slice(0, 5).map((ex) => (
+                    {day.exercises.map((ex) => (
                       <div key={ex.exercise} className="flex items-center justify-between rounded-md bg-bg-primary px-3 py-2 text-xs">
                         <span className="text-accent-white">{ex.exercise}</span>
                         <span className="font-mono text-accent-muted">{ex.sets}x{ex.reps}</span>
                       </div>
                     ))}
-                    {day.exercises.length > 5 && (
-                      <p className="text-xs text-accent-muted">+ {day.exercises.length - 5} more</p>
-                    )}
                     {isRestDay && day.exercises.length === 0 && (
                       <p className="text-xs text-accent-muted italic">Active recovery day — no lifting</p>
                     )}
