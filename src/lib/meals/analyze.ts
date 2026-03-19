@@ -62,28 +62,29 @@ Rules:
 - Use standard portion references: fist ≈ 1 cup, palm ≈ 3–4 oz protein, thumb ≈ 1 tbsp.
 - For packaged or branded items, use known nutrition when possible.
 - If a restaurant or menu link is provided, prefer official nutrition data from that source when inferable.
-- Only set confidence to 0.9 or above when you can identify most items and portions with high certainty; otherwise use 0.7–0.85.
+- Nutrition labels: When a nutrition facts label is visible (on soda cans/bottles, candy wrappers, snack bags, drink containers, packaged foods, or any product), read the label and use those exact values for that item. This applies to all categories: breakfast, lunch, dinner, snack, and liquids. If the label shows "per serving" and multiple servings are visible, multiply accordingly.
+- Only set confidence to 0.9 or above when you can identify most items and portions with high certainty (or when using label values); otherwise use 0.7–0.85.
 - Return strict JSON only; no markdown, no explanation.`;
 
 function buildPrompt(mealType: string | null, restaurantUrl: string | null): string {
-  const mealHint = mealType && mealType !== 'unspecified' ? ` This is a ${mealType} meal.` : '';
+  const mealHint = mealType && mealType !== 'unspecified' ? ` This is a ${mealType} (category).` : '';
   const urlHint = restaurantUrl
     ? ` The user provided this restaurant or menu link for reference (use it to improve accuracy when possible): ${restaurantUrl}`
     : '';
 
-  return `Analyze this meal photo.${mealHint}${urlHint}
+  return `Analyze this meal/food photo.${mealHint}${urlHint}
 
-Estimate the total nutritional content of everything visible on the plate/tray. Be precise: use standard portion sizes (e.g. fist = ~1 cup, palm = 3–4 oz protein), consider cooking oils and sauces, and prefer known nutrition for recognizable branded or restaurant items.
+If a nutrition label is visible (e.g. on a soda, candy, snack package, bottle, can, or any packaging), read the label and use those values for calories, protein, carbs, fat, and fiber. For plated meals or items without labels, estimate using standard portion sizes (fist = ~1 cup, palm = 3–4 oz protein), cooking oils, and known nutrition for branded/restaurant items.
 
 Return a single JSON object with these exact keys:
-- description (string): 1–2 sentence summary of the meal
-- calories (number): total kcal
+- description (string): 1–2 sentence summary (e.g. "Coca-Cola 12 oz can" or "Scrambled eggs with toast")
+- calories (number): total kcal (from label when visible, otherwise estimated)
 - protein_g (number)
 - carbs_g (number)
 - fat_g (number)
 - fiber_g (number)
-- ingredients (array of strings): each identified food item
-- confidence (number 0–1): only use 0.9+ when you are highly confident in the estimate; otherwise 0.7–0.89.`;
+- ingredients (array of strings): each identified food or beverage item
+- confidence (number 0–1): use 0.9+ when using label data or when highly confident; otherwise 0.7–0.89.`;
 }
 
 export async function runMealAnalysis(

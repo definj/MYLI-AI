@@ -32,14 +32,16 @@ type MealLog = {
   logged_at: string;
 };
 
-const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
+const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack', 'liquids'] as const;
 
 export default function MealsPage() {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [mealType, setMealType] = useState<string>('lunch');
   const [restaurantUrl, setRestaurantUrl] = useState('');
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const [analysisCount, setAnalysisCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -86,7 +88,8 @@ export default function MealsPage() {
     return () => { cancelled = true; };
   }, [selectedDate, saved]);
 
-  const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+  const previewUrls = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => previewUrls.forEach((url) => URL.revokeObjectURL(url)), [previewUrls]);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -126,7 +129,7 @@ export default function MealsPage() {
     ctx.drawImage(video, 0, 0);
     canvas.toBlob((blob) => {
       if (blob) {
-        setFile(new File([blob], 'meal-capture.jpg', { type: 'image/jpeg' }));
+        setFiles((prev) => [...prev, new File([blob], `meal-capture-${Date.now()}.jpg`, { type: 'image/jpeg' })]);
         setSaved(false);
         stopCamera();
       }
@@ -134,33 +137,67 @@ export default function MealsPage() {
   }, [stopCamera]);
 
   const analyzeMeal = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setError(null);
     setSaved(false);
     setIsLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('meal_type', mealType);
-    if (restaurantUrl.trim()) formData.append('restaurant_url', restaurantUrl.trim());
-    const response = await fetch('/api/meals/analyze', { method: 'POST', body: formData });
-    setIsLoading(false);
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ error: 'Unable to analyze meal.' }));
-      setError(body.error || 'Unable to analyze meal.');
-      return;
+    const total = files.length;
+    setAnalyzeProgress({ current: 0, total });
+
+    const results: AnalysisResponse[] = [];
+    for (let i = 0; i < files.length; i++) {
+      setAnalyzeProgress({ current: i + 1, total });
+      const formData = new FormData();
+      formData.append('file', files[i]);
+      formData.append('meal_type', mealType);
+      if (restaurantUrl.trim()) formData.append('restaurant_url', restaurantUrl.trim());
+      const response = await fetch('/api/meals/analyze', { method: 'POST', body: formData });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({ error: 'Unable to analyze meal.' }));
+        setError(body.error || `Failed on image ${i + 1}.`);
+        setIsLoading(false);
+        setAnalyzeProgress(null);
+        return;
+      }
+      results.push((await response.json()) as AnalysisResponse);
     }
-    const body = (await response.json()) as AnalysisResponse;
-    setAnalysis(body);
+
+    setAnalyzeProgress(null);
+    setIsLoading(false);
+
+    if (results.length === 1) {
+      setAnalysis(results[0]);
+    } else {
+      const combined: AnalysisResponse = {
+        description: `${results.length} items logged for ${mealType}.`,
+        calories: results.reduce((s, r) => s + r.calories, 0),
+        protein_g: results.reduce((s, r) => s + r.protein_g, 0),
+        carbs_g: results.reduce((s, r) => s + r.carbs_g, 0),
+        fat_g: results.reduce((s, r) => s + r.fat_g, 0),
+        fiber_g: results.reduce((s, r) => s + r.fiber_g, 0),
+        ingredients: results.flatMap((r) => r.ingredients ?? []),
+        confidence: results.reduce((s, r) => s + (r.confidence ?? 0), 0) / results.length,
+      };
+      setAnalysis(combined);
+    }
+    setAnalysisCount(results.length);
     setSaved(true);
+    setFiles([]);
     refresh();
   };
 
   const reset = () => {
     setAnalysis(null);
-    setFile(null);
+    setAnalysisCount(0);
+    setFiles([]);
     setSaved(false);
     setError(null);
     if (cameraActive) stopCamera();
+  };
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setSaved(false);
   };
 
   const deleteMeal = async (id: string) => {
@@ -180,7 +217,7 @@ export default function MealsPage() {
     <FeatureShell
       eyebrow="Meals"
       title="Meal Logging"
-      description="Capture or upload a photo of your meal and let AI analyze the macros. Add a restaurant link for clearer data. Results are saved to your nutrition log."
+      description="Capture or upload one or more photos per category (breakfast, lunch, dinner, snack, liquids). AI reads nutrition labels on packaging when visible. Results are saved to your nutrition log."
     >
       <WeeklyCalendar
         selectedDate={selectedDate}
@@ -225,14 +262,17 @@ export default function MealsPage() {
           {!cameraActive ? (
             <div className="flex flex-wrap gap-2">
               <label className="inline-flex cursor-pointer items-center rounded-md border border-bg-surface bg-bg-secondary px-4 py-2 text-sm text-accent-white hover:bg-bg-primary">
-                <span className="mr-2">Upload image</span>
+                <span className="mr-2">Upload image{files.length ? 's' : ''}</span>
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    setFile(e.target.files?.[0] ?? null);
+                    const chosen = e.target.files ? Array.from(e.target.files) : [];
+                    if (chosen.length) setFiles((prev) => [...prev, ...chosen]);
                     setSaved(false);
+                    e.target.value = '';
                   }}
                 />
               </label>
@@ -267,14 +307,27 @@ export default function MealsPage() {
             </div>
           )}
 
-          {preview && !cameraActive && (
-            <div className="flex max-h-80 w-full justify-center rounded-lg border border-bg-surface bg-bg-secondary p-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={preview}
-                alt="Meal preview"
-                className="max-h-72 w-full object-contain"
-              />
+          {previewUrls.length > 0 && !cameraActive && (
+            <div className="space-y-2">
+              <p className="text-xs text-accent-muted">{previewUrls.length} image{previewUrls.length !== 1 ? 's' : ''} — remove any you don’t want to log</p>
+              <div className="flex max-h-80 flex-wrap gap-2 overflow-y-auto rounded-lg border border-bg-surface bg-bg-secondary p-2">
+                {previewUrls.map((url, i) => (
+                  <div key={i} className="relative shrink-0">
+                    <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-md border border-bg-surface bg-bg-primary">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt={`Preview ${i + 1}`} className="h-full w-full object-contain" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-xs text-white shadow"
+                      aria-label="Remove image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -283,9 +336,13 @@ export default function MealsPage() {
               type="button"
               className="bg-accent-gold text-bg-primary hover:bg-accent-gold/90"
               onClick={analyzeMeal}
-              disabled={!file || isLoading}
+              disabled={files.length === 0 || isLoading}
             >
-              {isLoading ? 'Analyzing...' : 'Analyze & Log Meal'}
+              {isLoading
+                ? analyzeProgress
+                  ? `Analyzing ${analyzeProgress.current} of ${analyzeProgress.total}...`
+                  : 'Analyzing...'
+                : files.length > 1 ? `Analyze & Log ${files.length} images` : 'Analyze & Log Meal'}
             </Button>
             <Button type="button" variant="outline" className="border-bg-surface text-accent-muted hover:text-accent-white" onClick={reset}>
               Reset
@@ -338,7 +395,9 @@ export default function MealsPage() {
                 </p>
               )}
               {saved && (
-                <p className="text-xs text-success">Meal saved to your nutrition log.</p>
+                <p className="text-xs text-success">
+                  {analysisCount > 1 ? `${analysisCount} meals saved to your nutrition log.` : 'Meal saved to your nutrition log.'}
+                </p>
               )}
             </div>
           )}
