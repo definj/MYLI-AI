@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { FeatureShell } from '@/components/app/feature-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +37,7 @@ const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 export default function MealsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [mealType, setMealType] = useState<string>('lunch');
+  const [restaurantUrl, setRestaurantUrl] = useState('');
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,11 @@ export default function MealsPage() {
 
   const [dayMeals, setDayMeals] = useState<MealLog[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [cameraActive, setCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const buildDots = useCallback(
     (day: { meals: number; workouts: number; tasks: { pending: number; completed: number } }) => {
@@ -81,6 +88,51 @@ export default function MealsPage() {
 
   const preview = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
 
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  }, []);
+
+  useEffect(() => {
+    if (!cameraActive || !videoRef.current) return;
+    let mounted = true;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } })
+      .then((stream) => {
+        if (!mounted || !videoRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        videoRef.current.srcObject = stream;
+      })
+      .catch(() => {
+        if (mounted) setError('Camera access denied or unavailable.');
+      });
+    return () => {
+      mounted = false;
+      stopCamera();
+    };
+  }, [cameraActive, stopCamera]);
+
+  const capturePhoto = useCallback(() => {
+    if (!videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (blob) {
+        setFile(new File([blob], 'meal-capture.jpg', { type: 'image/jpeg' }));
+        setSaved(false);
+        stopCamera();
+      }
+    }, 'image/jpeg', 0.92);
+  }, [stopCamera]);
+
   const analyzeMeal = async () => {
     if (!file) return;
     setError(null);
@@ -89,6 +141,7 @@ export default function MealsPage() {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('meal_type', mealType);
+    if (restaurantUrl.trim()) formData.append('restaurant_url', restaurantUrl.trim());
     const response = await fetch('/api/meals/analyze', { method: 'POST', body: formData });
     setIsLoading(false);
     if (!response.ok) {
@@ -107,13 +160,27 @@ export default function MealsPage() {
     setFile(null);
     setSaved(false);
     setError(null);
+    if (cameraActive) stopCamera();
+  };
+
+  const deleteMeal = async (id: string) => {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/meals/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setDayMeals((prev) => prev.filter((m) => m.id !== id));
+        refresh();
+      }
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
     <FeatureShell
       eyebrow="Meals"
       title="Meal Logging"
-      description="Capture a photo of your meal and let AI analyze the macros. Results are automatically saved to your nutrition log."
+      description="Capture or upload a photo of your meal and let AI analyze the macros. Add a restaurant link for clearer data. Results are saved to your nutrition log."
     >
       <WeeklyCalendar
         selectedDate={selectedDate}
@@ -141,16 +208,76 @@ export default function MealsPage() {
               </button>
             ))}
           </div>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) => { setFile(e.target.files?.[0] ?? null); setSaved(false); }}
-            className="h-12 bg-bg-secondary border-none text-accent-white file:text-accent-white"
-          />
-          {preview && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview} alt="Meal preview" className="max-h-80 w-full rounded-lg border border-bg-surface object-cover" />
+
+          <div>
+            <label className="mb-1 block text-xs text-accent-muted">
+              Optional: Restaurant or menu link (for clearer nutrition data)
+            </label>
+            <Input
+              type="url"
+              placeholder="https://..."
+              value={restaurantUrl}
+              onChange={(e) => setRestaurantUrl(e.target.value)}
+              className="h-10 bg-bg-secondary border-none text-accent-white placeholder:text-accent-muted"
+            />
+          </div>
+
+          {!cameraActive ? (
+            <div className="flex flex-wrap gap-2">
+              <label className="inline-flex cursor-pointer items-center rounded-md border border-bg-surface bg-bg-secondary px-4 py-2 text-sm text-accent-white hover:bg-bg-primary">
+                <span className="mr-2">Upload image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    setFile(e.target.files?.[0] ?? null);
+                    setSaved(false);
+                  }}
+                />
+              </label>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-bg-surface text-accent-white"
+                onClick={() => { setError(null); setCameraActive(true); }}
+              >
+                Take a picture
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="relative aspect-video max-h-80 w-full overflow-hidden rounded-lg border border-bg-surface bg-bg-primary">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" className="bg-accent-gold text-bg-primary hover:bg-accent-gold/90" onClick={capturePhoto}>
+                  Capture photo
+                </Button>
+                <Button type="button" variant="outline" className="border-bg-surface text-accent-muted" onClick={stopCamera}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
           )}
+
+          {preview && !cameraActive && (
+            <div className="flex max-h-80 w-full justify-center rounded-lg border border-bg-surface bg-bg-secondary p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={preview}
+                alt="Meal preview"
+                className="max-h-72 w-full object-contain"
+              />
+            </div>
+          )}
+
           <div className="flex gap-3">
             <Button
               type="button"
@@ -218,7 +345,6 @@ export default function MealsPage() {
         </div>
       </div>
 
-      {/* Meal history for selected day */}
       <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
         <p className="text-sm font-medium text-accent-white mb-3">
           Meals on {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
@@ -234,18 +360,37 @@ export default function MealsPage() {
         ) : (
           <div className="space-y-2">
             {dayMeals.map((meal) => (
-              <div key={meal.id} className="flex items-center justify-between rounded-md bg-bg-secondary px-4 py-3 text-sm">
-                <div>
-                  <p className="text-accent-white capitalize">{meal.meal_type ?? 'Meal'}</p>
+              <div key={meal.id} className="flex items-center justify-between gap-2 rounded-md bg-bg-secondary px-4 py-3 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Link href={`/meals/${meal.id}`} className="font-medium text-accent-white capitalize hover:underline truncate">
+                      {meal.meal_type ?? 'Meal'}
+                    </Link>
+                  </div>
                   {meal.ai_description && (
                     <p className="mt-0.5 text-xs text-accent-muted line-clamp-1">{meal.ai_description}</p>
                   )}
                 </div>
-                <div className="flex gap-3 text-xs font-mono text-accent-muted">
-                  <span className="text-accent-gold">{meal.calories ?? 0} cal</span>
-                  <span>{meal.protein_g ?? 0}p</span>
-                  <span>{meal.carbs_g ?? 0}c</span>
-                  <span>{meal.fat_g ?? 0}f</span>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="font-mono text-xs text-accent-muted">
+                    <span className="text-accent-gold">{meal.calories ?? 0} cal</span>
+                    {' '}{meal.protein_g ?? 0}p {meal.carbs_g ?? 0}c {meal.fat_g ?? 0}f
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-danger hover:bg-danger/10 hover:text-danger"
+                    onClick={() => deleteMeal(meal.id)}
+                    disabled={deletingId === meal.id}
+                  >
+                    {deletingId === meal.id ? '…' : 'Delete'}
+                  </Button>
+                  <Link href={`/meals/${meal.id}`}>
+                    <Button type="button" variant="outline" size="sm" className="h-8 border-bg-surface text-accent-muted hover:text-accent-white">
+                      View / Replace
+                    </Button>
+                  </Link>
                 </div>
               </div>
             ))}
