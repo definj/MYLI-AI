@@ -97,6 +97,7 @@ export default function WorkoutsPage() {
   const [error, setError] = useState<string | null>(null);
   const [equipment, setEquipment] = useState('');
   const [trainingStyle, setTrainingStyle] = useState('');
+  const [regeneratingDate, setRegeneratingDate] = useState<string | null>(null);
 
   const [dayWorkouts, setDayWorkouts] = useState<WorkoutLog[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
@@ -154,6 +155,43 @@ export default function WorkoutsPage() {
     const data = (await response.json()) as PlanPayload;
     setPlans(data);
     setActiveTier(data.tiers.length - 1);
+  };
+
+  const regenerateDay = async (date: string) => {
+    if (!plans) return;
+    setError(null);
+    setRegeneratingDate(date);
+    try {
+      const response = await fetch('/api/workouts/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'day',
+          date,
+          equipment,
+          training_style: trainingStyle,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({ error: 'Failed to regenerate day.' }));
+        setError(body.error || 'Failed to regenerate day.');
+        return;
+      }
+
+      const result = (await response.json()) as { week_plan?: Tier['week_plan'] };
+      if (!result.week_plan) return;
+
+      setPlans((prev) => {
+        if (!prev) return prev;
+        const tiers = prev.tiers.map((tier, idx) =>
+          idx === activeTier ? { ...tier, week_plan: result.week_plan } : tier
+        );
+        return { ...prev, tiers };
+      });
+    } finally {
+      setRegeneratingDate(null);
+    }
   };
 
   return (
@@ -226,12 +264,26 @@ export default function WorkoutsPage() {
                 <p className="text-sm font-medium text-accent-white">This week’s split</p>
                 <p className="text-xs text-accent-muted">{plans.tiers[activeTier].week_plan?.split_name}</p>
               </div>
-              <p className="text-xs text-accent-muted">
-                Week of {plans.tiers[activeTier].week_plan?.week_start}
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-accent-muted">
+                  Week of {plans.tiers[activeTier].week_plan?.week_start}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-bg-secondary text-accent-muted hover:text-accent-white text-xs h-8 px-3"
+                  onClick={generatePlans}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Regenerating...' : '↺ Regenerate Week'}
+                </Button>
+              </div>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {plans.tiers[activeTier].week_plan!.days.map((day) => (
+              {plans.tiers[activeTier].week_plan!.days.map((day) => {
+                const isRestDay = /rest|recovery/i.test(day.title);
+                const isRegenerating = regeneratingDate === day.date;
+                return (
                 <div key={day.date} className="rounded-lg border border-bg-surface bg-bg-secondary p-4">
                   <div className="flex items-center justify-between">
                     <Link href={`/workouts/day/${day.date}`} className="text-sm font-medium text-accent-white hover:underline">
@@ -250,9 +302,21 @@ export default function WorkoutsPage() {
                     {day.exercises.length > 5 && (
                       <p className="text-xs text-accent-muted">+ {day.exercises.length - 5} more</p>
                     )}
+                    {isRestDay && day.exercises.length === 0 && (
+                      <p className="text-xs text-accent-muted italic">Active recovery day — no lifting</p>
+                    )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => regenerateDay(day.date)}
+                    disabled={isRegenerating || isLoading}
+                    className="mt-3 w-full rounded-md bg-bg-primary px-3 py-1.5 text-xs text-accent-muted hover:text-accent-white transition-colors disabled:opacity-40"
+                  >
+                    {isRegenerating ? 'Regenerating...' : '↺ Regenerate this day'}
+                  </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
