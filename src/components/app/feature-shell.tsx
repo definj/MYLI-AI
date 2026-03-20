@@ -9,12 +9,12 @@ type FeatureShellProps = {
 
 export function FeatureShell({ eyebrow, title, description, children }: FeatureShellProps) {
   return (
-    <main className="min-h-screen bg-bg-primary px-4 py-8 text-accent-white sm:px-10 sm:py-10">
-      <div className="mx-auto max-w-5xl space-y-5 sm:space-y-6">
+    <main className="min-h-full bg-transparent px-6 pb-8 pt-8 text-accent-white">
+      <div className="mx-auto max-w-[390px] space-y-5">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-accent-muted sm:text-xs">{eyebrow}</p>
-          <h1 className="mt-3 font-display text-3xl sm:mt-4 sm:text-4xl">{title}</h1>
-          <p className="mt-2 max-w-3xl text-sm text-accent-muted sm:mt-3 sm:text-base">{description}</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/45">{eyebrow}</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight">{title}</h1>
+          <p className="mt-2 text-sm text-white/60">{description}</p>
         </div>
         {children}
       </div>

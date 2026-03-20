@@ -30,7 +30,7 @@ MYLI is a premium, minimalist-luxury full-stack web application designed for com
 ### ✅ Phase 4 — Mental Core (Completed)
 - [x] 12. Task manager with categories and priority matrix
 - [x] 13. Daily rituals builder
-- [ ] 14. Google Calendar + Outlook OAuth integration
+- [x] 14. Google Calendar OAuth integration
 - [ ] 15. Notion + Todoist integration
 
 ### ✅ Phase 5 — Intelligence Layer (Completed)
@@ -101,6 +101,10 @@ The onboarding flow (`src/app/onboarding/page.tsx`) was overhauled with the foll
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
 3. Fill in AI/integration keys as needed for the feature area you're working on.
+   - Google Calendar integration (optional):
+     - `GOOGLE_CLIENT_ID`
+     - `GOOGLE_CLIENT_SECRET`
+     - `NEXT_PUBLIC_APP_URL` (must match your OAuth redirect origin)
 4. Run the development server:
    ```bash
    npm install
@@ -130,4 +134,19 @@ The onboarding flow (`src/app/onboarding/page.tsx`) was overhauled with the foll
    npx supabase db push
    ```
 3. Verify policies and permissions using the matrix in [docs/rls-matrix.md](docs/rls-matrix.md)
+
+## Google Calendar Integration Setup
+
+1. Create OAuth credentials in Google Cloud for a Web application.
+2. Add an authorized redirect URI:
+   - `<NEXT_PUBLIC_APP_URL>/api/integrations/google/callback`
+3. Set these environment variables:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `NEXT_PUBLIC_APP_URL`
+4. Apply migrations so integration tables exist:
+   ```bash
+   npx supabase db push
+   ```
+5. Open **Settings -> Integrations** and connect Google Calendar.
 

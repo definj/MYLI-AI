@@ -5,15 +5,20 @@
 @custom-variant dark (&:is(.dark *));
 
 :root, .dark {
-  --bg-primary: #0A0A0A;
-  --bg-secondary: #111111;
-  --bg-surface: #1A1A1A;
-  --accent-gold: #C9A84C;
-  --accent-white: #F5F5F0;
-  --accent-muted: #6B6B6B;
+  --bg-primary: #0d0d0f;
+  --bg-secondary: #141418;
+  --bg-surface: #1c1c23;
+  --accent-gold: #c9a84c;
+  --accent-white: #f7f7fb;
+  --accent-muted: #9b9bad;
+  --accent-mental: #a78bfa;
+  --accent-physical: #ff8a55;
   --success: #4CAF78;
   --warning: #E8A838;
   --danger: #E05252;
+  --glass-bg: rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
 
   --background: var(--bg-primary);
   --foreground: var(--accent-white);
@@ -41,7 +46,7 @@
   --chart-4: oklch(0.488 0.243 264.376);
   --chart-5: oklch(0.424 0.199 265.638);
   
-  --radius: 0rem;
+  --radius: 0.9rem;
 }
 
 @theme inline {
@@ -54,6 +59,10 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-accent-mental: var(--accent-mental);
+  --color-accent-physical: var(--accent-physical);
+  --color-glass-bg: var(--glass-bg);
+  --color-glass-border: var(--glass-border);
 
   --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
@@ -95,7 +104,6 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    box-shadow: none !important;
   }
   body {
     @apply bg-background text-foreground;
@@ -106,6 +114,28 @@
 }
 
 @layer utilities {
+  .app-background {
+    background:
+      radial-gradient(1100px 500px at 8% -8%, color-mix(in oklab, var(--accent-mental) 30%, transparent), transparent 65%),
+      radial-gradient(900px 420px at 100% 8%, color-mix(in oklab, var(--accent-physical) 24%, transparent), transparent 70%),
+      linear-gradient(180deg, #0d0d0f 0%, #0d0d0f 100%);
+  }
+
+  .desktop-shell {
+    @apply lg:ml-72;
+  }
+
+  .desktop-only {
+    @apply hidden lg:block;
+  }
+
+  .glass-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(20px);
+  }
+
   .scrollbar-none {
     -ms-overflow-style: none;
     scrollbar-width: none;

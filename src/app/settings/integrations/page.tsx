@@ -1,7 +1,7 @@
 import { FeatureShell } from '@/components/app/feature-shell';
+import { GoogleIntegrationCard } from '@/components/features/google-integration-card';
 
 const integrations = [
-  { name: 'Google', envs: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'] },
   { name: 'Apple', envs: ['APPLE_CLIENT_ID', 'APPLE_CLIENT_SECRET'] },
   { name: 'Microsoft', envs: ['MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'] },
   { name: 'Notion', envs: ['NOTION_CLIENT_ID', 'NOTION_CLIENT_SECRET'] },
@@ -13,21 +13,23 @@ export default function SettingsIntegrationsPage() {
     <FeatureShell
       eyebrow="Settings / Integrations"
       title="Connected Services"
-      description="Connect Google, Apple, Microsoft, Notion, Todoist, and email integrations."
+      description="Connect your external tools so MYLI can sync planning context across your week."
     >
-      <div className="grid gap-3">
+      <div className="grid gap-4">
+        <GoogleIntegrationCard />
+
         {integrations.map((integration) => {
           const configured = integration.envs.every((key) => Boolean(process.env[key]));
           return (
             <div
               key={integration.name}
-              className="flex items-center justify-between rounded-xl border border-bg-surface bg-bg-surface/70 px-4 py-3"
+              className="glass-card flex items-center justify-between rounded-2xl px-4 py-3"
             >
               <div>
                 <p className="font-medium text-accent-white">{integration.name}</p>
                 <p className="text-xs text-accent-muted">
                   {configured
-                    ? 'Configured in environment and ready to connect.'
+                    ? 'Credentials configured. Provider UX is queued in the next integration sprint.'
                     : 'Missing credentials. You can add this integration later.'}
                 </p>
               </div>

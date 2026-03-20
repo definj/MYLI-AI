@@ -47,7 +47,7 @@ export default function AchievementsPage() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="mb-4 rounded-xl border border-accent-gold/60 bg-accent-gold/10 p-4 text-center"
+            className="glass-card mb-4 rounded-2xl border-accent-gold/60 bg-accent-gold/10 p-4 text-center"
           >
             <p className="font-display text-xl text-accent-gold">Badge Unlocked!</p>
             <p className="mt-1 text-sm text-accent-white">{celebration}</p>
@@ -58,7 +58,7 @@ export default function AchievementsPage() {
       {isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl border border-bg-surface bg-bg-surface/40" />
+            <div key={i} className="glass-card h-24 animate-pulse rounded-2xl" />
           ))}
         </div>
       ) : (
@@ -69,10 +69,10 @@ export default function AchievementsPage() {
               initial={badge.newly_unlocked ? { scale: 0.9, opacity: 0 } : false}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              className={`rounded-xl border p-4 transition-colors ${
+              className={`rounded-2xl border p-4 transition-colors ${
                 badge.unlocked
-                  ? 'border-accent-gold/40 bg-bg-surface/70'
-                  : 'border-bg-surface bg-bg-surface/30 opacity-50'
+                  ? 'glass-card border-accent-gold/40'
+                  : 'glass-card border-bg-surface opacity-50'
               }`}
             >
               <div className="flex items-center justify-between">
