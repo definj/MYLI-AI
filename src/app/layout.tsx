@@ -44,9 +44,9 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${jetbrainsMono.variable} ${playfair.variable} antialiased selection:bg-accent-gold/30 selection:text-accent-white`}
       >
-        <div className="flex min-h-screen w-full items-stretch justify-center bg-black sm:bg-zinc-950">
+        <div className="flex min-h-screen w-full items-stretch justify-center bg-[#0D0D0F] sm:bg-zinc-950">
           <DesktopSidebar />
-          <div className="relative flex h-screen w-full max-w-[390px] flex-col overflow-hidden bg-[#0D0D0F] text-accent-white shadow-2xl sm:h-[844px] sm:max-h-[844px] sm:rounded-[40px] sm:border sm:border-white/10 lg:h-screen lg:max-h-none lg:max-w-none lg:rounded-none lg:border-0 lg:shadow-none lg:ml-72">
+          <div className="relative flex h-screen w-full max-w-none flex-col overflow-hidden bg-[#0D0D0F] text-accent-white shadow-none sm:h-[844px] sm:max-h-[844px] sm:max-w-[390px] sm:rounded-[40px] sm:border sm:border-white/10 sm:shadow-2xl lg:h-screen lg:max-h-none lg:max-w-none lg:rounded-none lg:border-0 lg:shadow-none lg:ml-72">
             <div className="relative z-0 flex-1 overflow-y-auto pb-[80px] scrollbar-none app-background lg:pb-6">
               {children}
             </div>
