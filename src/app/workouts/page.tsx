@@ -117,6 +117,12 @@ export default function WorkoutsPage() {
 
   const [dayWorkouts, setDayWorkouts] = useState<WorkoutLog[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
+  const [manualActivity, setManualActivity] = useState('');
+  const [manualDuration, setManualDuration] = useState('');
+  const [manualNotes, setManualNotes] = useState('');
+  const [manualCompleted, setManualCompleted] = useState(true);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   const buildDots = useCallback(
     (day: { meals: number; workouts: number; tasks: { pending: number; completed: number } }, date?: string) => {
@@ -135,7 +141,7 @@ export default function WorkoutsPage() {
     [buildDots]
   );
 
-  const { selectedDate, setSelectedDate, weekOffset, setWeekOffset, activityMap } =
+  const { selectedDate, setSelectedDate, weekOffset, setWeekOffset, activityMap, refresh } =
     useWeekCalendar(buildDotsForHook);
 
   const calendarActivityMap = useMemo(() => {
@@ -255,6 +261,73 @@ export default function WorkoutsPage() {
       }
     } finally {
       setRegeneratingDate(null);
+    }
+  };
+
+  const logManualWorkout = async () => {
+    const activity = manualActivity.trim();
+    if (!activity) {
+      setManualError('Add at least one activity or exercise name.');
+      return;
+    }
+
+    const parsedDuration = manualDuration.trim() ? Number(manualDuration) : null;
+    if (parsedDuration != null && (!Number.isFinite(parsedDuration) || parsedDuration <= 0)) {
+      setManualError('Duration must be a positive number of minutes.');
+      return;
+    }
+
+    setManualError(null);
+    setManualSaving(true);
+
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setManualError('You must be signed in to log workouts.');
+        return;
+      }
+
+      const exercises = activity
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((entry) => ({
+          exercise: entry,
+          sets: 1,
+          reps: 'Logged',
+          rest_sec: 0,
+        }));
+
+      const { data, error: insertError } = await supabase
+        .from('workout_logs')
+        .insert({
+          user_id: user.id,
+          date: selectedDate,
+          exercises,
+          duration_min: parsedDuration == null ? null : Math.round(parsedDuration),
+          completed: manualCompleted,
+          notes: manualNotes.trim() || null,
+        })
+        .select('id, date, duration_min, completed, exercises, notes')
+        .single();
+
+      if (insertError || !data) {
+        setManualError(insertError?.message || 'Failed to save workout log.');
+        return;
+      }
+
+      setDayWorkouts((prev) => [data as WorkoutLog, ...prev]);
+      setManualActivity('');
+      setManualDuration('');
+      setManualNotes('');
+      setManualCompleted(true);
+      refresh();
+    } finally {
+      setManualSaving(false);
     }
   };
 
@@ -457,6 +530,55 @@ export default function WorkoutsPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Manual workout logging for outside-app sessions */}
+      <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
+        <p className="text-sm font-medium text-accent-white mb-1">Log an outside workout</p>
+        <p className="text-xs text-accent-muted mb-3">
+          Record workouts completed outside the app for {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}.
+        </p>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Input
+            value={manualActivity}
+            onChange={(e) => setManualActivity(e.target.value)}
+            placeholder="Activity or exercises (comma separated)"
+            className="h-11 bg-bg-secondary border-none text-accent-white placeholder:text-accent-muted md:col-span-2"
+          />
+          <Input
+            type="number"
+            min={1}
+            value={manualDuration}
+            onChange={(e) => setManualDuration(e.target.value)}
+            placeholder="Duration (min)"
+            className="h-11 bg-bg-secondary border-none text-accent-white placeholder:text-accent-muted"
+          />
+          <Input
+            value={manualNotes}
+            onChange={(e) => setManualNotes(e.target.value)}
+            placeholder="Optional notes (energy, RPE, etc.)"
+            className="h-11 bg-bg-secondary border-none text-accent-white placeholder:text-accent-muted md:col-span-2"
+          />
+          <label className="inline-flex h-11 items-center gap-2 rounded-md bg-bg-secondary px-3 text-sm text-accent-muted">
+            <input
+              type="checkbox"
+              checked={manualCompleted}
+              onChange={(e) => setManualCompleted(e.target.checked)}
+            />
+            Mark as completed
+          </label>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <Button
+            type="button"
+            className="bg-accent-gold text-bg-primary hover:bg-accent-gold/90"
+            onClick={logManualWorkout}
+            disabled={manualSaving}
+          >
+            {manualSaving ? 'Saving...' : 'Log Workout'}
+          </Button>
+        </div>
+        {manualError && <p className="mt-3 text-sm text-danger">{manualError}</p>}
       </div>
 
       {/* Workout logs for selected day */}

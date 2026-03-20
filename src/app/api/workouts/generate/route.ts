@@ -45,6 +45,12 @@ type WorkoutPlanPayloadV2 = WorkoutPlanPayload & {
   week_plan?: WeekPlan;
 };
 
+function addDaysDateOnly(dateOnly: string, days: number) {
+  const d = new Date(`${dateOnly}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return toDateOnly(d);
+}
+
 function toDateOnly(d: Date) {
   return d.toISOString().slice(0, 10);
 }
@@ -150,6 +156,74 @@ function normalizeWeekPlan(input: unknown): WeekPlan | null {
     split_name: typeof obj.split_name === 'string' ? obj.split_name : 'Weekly Split',
     days,
   };
+}
+
+function getTrainingDayIndexes(trainingDays: number): number[] {
+  const clamped = Math.max(3, Math.min(6, Math.round(trainingDays)));
+  if (clamped <= 3) return [0, 2, 4];
+  if (clamped === 4) return [0, 1, 3, 5];
+  if (clamped === 5) return [0, 1, 2, 4, 5];
+  return [0, 1, 2, 3, 4, 5];
+}
+
+function fallbackRecoveryExercises() {
+  return [
+    { exercise: 'Easy walk', sets: 1, reps: '30-45 min', rest_sec: 0 },
+    { exercise: 'Mobility flow', sets: 1, reps: '15-20 min', rest_sec: 0 },
+  ];
+}
+
+function buildFallbackWeekPlanForTier(tier: WorkoutTier, weekStart: string): WeekPlan {
+  const trainingIndexes = new Set(getTrainingDayIndexes(tier.weekly_days));
+  const trainingTitleByIndex = [
+    'Primary Session A',
+    'Primary Session B',
+    'Primary Session C',
+    'Secondary Session A',
+    'Secondary Session B',
+    'Secondary Session C',
+    'Rest / Recovery',
+  ];
+
+  const days: WorkoutDay[] = Array.from({ length: 7 }, (_, dayIndex) => {
+    const date = addDaysDateOnly(weekStart, dayIndex);
+    const isTrainingDay = trainingIndexes.has(dayIndex);
+
+    if (!isTrainingDay) {
+      return {
+        date,
+        title: 'Rest / Recovery',
+        focus: 'Low-intensity recovery and movement quality work.',
+        exercises: fallbackRecoveryExercises(),
+      };
+    }
+
+    return {
+      date,
+      title: trainingTitleByIndex[dayIndex] ?? 'Training Session',
+      focus: tier.focus || 'Progressive overload with quality movement patterns.',
+      exercises: tier.sample_day?.length ? tier.sample_day : [
+        { exercise: 'Goblet Squat', sets: 3, reps: '8-12', rest_sec: 75 },
+        { exercise: 'Dumbbell Bench Press', sets: 3, reps: '8-12', rest_sec: 75 },
+        { exercise: 'One-Arm Row', sets: 3, reps: '8-12', rest_sec: 60 },
+      ],
+    };
+  });
+
+  return {
+    week_start: weekStart,
+    split_name: `${tier.intensity} ${Math.max(3, Math.min(6, Math.round(tier.weekly_days)))}x`,
+    days,
+  };
+}
+
+function ensureTierWeekPlans(payload: WorkoutPlanPayloadV2, weekStart: string): WorkoutPlanPayloadV2 {
+  const tiers = payload.tiers.map((tier) => {
+    const normalized = normalizeWeekPlan((tier as any).week_plan);
+    const week_plan = normalized ?? buildFallbackWeekPlanForTier(tier, weekStart);
+    return { ...tier, week_plan };
+  });
+  return { ...payload, tiers };
 }
 
 export async function POST(request: Request) {
@@ -345,6 +419,7 @@ Training day rules:
     const weekPlan = normalizeWeekPlan((parsed as any)?.week_plan) ?? undefined;
     planPayload = { ...normalized, ...(weekPlan ? { week_plan: weekPlan } : {}) };
   }
+  planPayload = ensureTierWeekPlans(planPayload, weekStart);
 
   await supabase.from('workout_plans').update({ active: false }).eq('user_id', user.id);
 
