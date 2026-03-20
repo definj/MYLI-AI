@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { FeatureShell } from '@/components/app/feature-shell';
 import { GoogleIntegrationCard } from '@/components/features/google-integration-card';
 
@@ -16,7 +17,15 @@ export default function SettingsIntegrationsPage() {
       description="Connect your external tools so MYLI can sync planning context across your week."
     >
       <div className="grid gap-4">
-        <GoogleIntegrationCard />
+        <Suspense
+          fallback={
+            <div className="glass-card rounded-2xl px-5 py-4">
+              <p className="text-sm text-accent-muted">Loading Google integration...</p>
+            </div>
+          }
+        >
+          <GoogleIntegrationCard />
+        </Suspense>
 
         {integrations.map((integration) => {
           const configured = integration.envs.every((key) => Boolean(process.env[key]));
