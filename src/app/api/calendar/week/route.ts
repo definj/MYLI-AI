@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   const startIso = `${start}T00:00:00.000Z`;
   const endIso = `${end}T23:59:59.999Z`;
 
-  const [{ data: meals }, { data: workouts }, { data: tasks }] = await Promise.all([
+  const [{ data: meals }, { data: workouts }, { data: tasks }, { data: externalEvents }] = await Promise.all([
     supabase
       .from('meal_logs')
       .select('logged_at, meal_type')
@@ -38,18 +38,33 @@ export async function GET(request: Request) {
       .eq('user_id', user.id)
       .gte('due_at', startIso)
       .lte('due_at', endIso),
+    supabase
+      .from('calendar_external_events')
+      .select('start_at, end_at')
+      .eq('user_id', user.id)
+      .eq('provider', 'google')
+      .lte('start_at', endIso)
+      .gte('end_at', startIso),
   ]);
 
   type DayData = {
     meals: number;
     workouts: number;
     tasks: { pending: number; completed: number };
+    calendar_events: number;
   };
 
   const map: Record<string, DayData> = {};
 
   const ensure = (date: string): DayData => {
-    if (!map[date]) map[date] = { meals: 0, workouts: 0, tasks: { pending: 0, completed: 0 } };
+    if (!map[date]) {
+      map[date] = {
+        meals: 0,
+        workouts: 0,
+        tasks: { pending: 0, completed: 0 },
+        calendar_events: 0,
+      };
+    }
     return map[date];
   };
 
@@ -71,6 +86,12 @@ export async function GET(request: Request) {
     const d = ensure(day);
     if (t.completed) d.tasks.completed += 1;
     else d.tasks.pending += 1;
+  }
+
+  for (const event of externalEvents ?? []) {
+    if (!event.start_at) continue;
+    const day = event.start_at.split('T')[0];
+    ensure(day).calendar_events += 1;
   }
 
   return NextResponse.json({ data: map });

@@ -386,7 +386,7 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary text-accent-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen app-background text-accent-white flex flex-col items-center justify-center p-6 relative overflow-hidden">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -394,13 +394,13 @@ export default function OnboardingPage() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-12">
-          <h1 className="font-display text-4xl tracking-tight mb-3">MYLI</h1>
+          <h1 className="text-4xl font-semibold tracking-tight mb-3">MYLI</h1>
           <p className="text-accent-muted font-sans font-light tracking-wide text-sm">
             {stepLabels[step] ?? `Step ${step}`}
           </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="glass-card space-y-4 rounded-3xl p-5 sm:p-6">
           {message && (
             <div
               className={`rounded-md border px-4 py-3 text-sm ${
@@ -423,7 +423,9 @@ export default function OnboardingPage() {
                 <Button
                   type="button"
                   variant={track === 'physical' ? 'default' : 'outline'}
-                  className={track === 'physical' ? 'h-16 bg-accent-gold text-bg-primary hover:bg-accent-gold/90' : 'h-16 bg-bg-surface border-none text-accent-white hover:bg-bg-secondary'}
+                  className={track === 'physical'
+                    ? 'h-20 rounded-xl bg-gradient-to-br from-[#ff6b35] to-[#ff9a5c] text-white hover:opacity-95'
+                    : 'h-20 rounded-xl border border-white/10 bg-black/20 text-accent-white hover:bg-black/35'}
                   onClick={() => setTrack('physical')}
                 >
                   Body
@@ -431,7 +433,9 @@ export default function OnboardingPage() {
                 <Button
                   type="button"
                   variant={track === 'both' ? 'default' : 'outline'}
-                  className={track === 'both' ? 'h-16 bg-accent-gold text-bg-primary hover:bg-accent-gold/90' : 'h-16 bg-bg-surface border-none text-accent-white hover:bg-bg-secondary'}
+                  className={track === 'both'
+                    ? 'h-20 rounded-xl bg-gradient-to-br from-[#a78bfa] via-[#7b5ea7] to-[#ff8a55] text-white hover:opacity-95'
+                    : 'h-20 rounded-xl border border-white/10 bg-black/20 text-accent-white hover:bg-black/35'}
                   onClick={() => setTrack('both')}
                 >
                   Both
@@ -439,7 +443,9 @@ export default function OnboardingPage() {
                 <Button
                   type="button"
                   variant={track === 'mental' ? 'default' : 'outline'}
-                  className={track === 'mental' ? 'h-16 bg-accent-gold text-bg-primary hover:bg-accent-gold/90' : 'h-16 bg-bg-surface border-none text-accent-white hover:bg-bg-secondary'}
+                  className={track === 'mental'
+                    ? 'h-20 rounded-xl bg-gradient-to-br from-[#7b5ea7] to-[#a78bfa] text-white hover:opacity-95'
+                    : 'h-20 rounded-xl border border-white/10 bg-black/20 text-accent-white hover:bg-black/35'}
                   onClick={() => setTrack('mental')}
                 >
                   Mind

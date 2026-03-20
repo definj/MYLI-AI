@@ -16,22 +16,25 @@ const SETTINGS_NAV = [
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  if (pathname === '/settings/profile') {
+    return <>{children}</>;
+  }
 
   return (
-    <main className="min-h-screen bg-bg-primary px-4 py-8 text-accent-white sm:px-10">
-      <div className="mx-auto max-w-5xl">
-        <p className="font-mono text-xs uppercase tracking-[0.25em] text-accent-muted">Settings</p>
-        <h1 className="mt-3 font-display text-4xl">Settings</h1>
+    <main className="min-h-full bg-transparent px-6 py-8 text-accent-white">
+      <div className="mx-auto max-w-[390px]">
+        <p className="font-mono text-xs uppercase tracking-[0.22em] text-white/45">Settings</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Settings</h1>
 
-        <nav className="mt-6 flex gap-2 overflow-x-auto pb-2 scrollbar-none" aria-label="Settings navigation">
+        <nav className="mt-6 flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-xl scrollbar-none" aria-label="Settings navigation">
           {SETTINGS_NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={`shrink-0 rounded-md px-3 py-1.5 text-sm transition-colors ${
                 pathname === item.href
-                  ? 'bg-accent-gold text-bg-primary'
-                  : 'bg-bg-surface text-accent-muted hover:text-accent-white'
+                  ? 'bg-white text-black'
+                  : 'bg-black/20 text-white/60 hover:bg-white/10 hover:text-accent-white'
               }`}
             >
               {item.label}

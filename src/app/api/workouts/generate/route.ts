@@ -240,6 +240,7 @@ export async function POST(request: Request) {
   const trainingStyle = typeof body.training_style === 'string' ? body.training_style : '';
   const weekStart = typeof body.week_start === 'string' ? body.week_start : toDateOnly(startOfWeekMonday(new Date()));
   const regenerateDate = typeof body.date === 'string' ? body.date : null;
+  const activeTierIndex = typeof body.active_tier_index === 'number' ? Math.floor(body.active_tier_index) : null;
 
   const { data: physicalProfile } = await supabase
     .from('physical_profiles')
@@ -424,7 +425,12 @@ Training day rules:
   await supabase.from('workout_plans').update({ active: false }).eq('user_id', user.id);
 
   const inserts = (planPayload.tiers as unknown as WorkoutTierV2[]).map((tier, idx) => {
-    const isActive = idx === planPayload.tiers.length - 1;
+    const fallbackActiveIndex = planPayload.tiers.length - 1;
+    const safeActiveIndex =
+      activeTierIndex != null && activeTierIndex >= 0 && activeTierIndex < planPayload.tiers.length
+        ? activeTierIndex
+        : fallbackActiveIndex;
+    const isActive = idx === safeActiveIndex;
 
     const tierWeekPlan =
       (tier as any).week_plan

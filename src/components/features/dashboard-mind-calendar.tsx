@@ -6,10 +6,11 @@ import { useWeekCalendar } from '@/hooks/use-week-calendar';
 
 export function DashboardMindCalendar() {
   const buildDots = useCallback(
-    (day: { meals: number; workouts: number; tasks: { pending: number; completed: number } }) => {
+    (day: { meals: number; workouts: number; tasks: { pending: number; completed: number }; calendar_events: number }) => {
       const dots: Array<{ color: string; label: string }> = [];
       if (day.tasks.completed > 0) dots.push({ color: 'bg-emerald-400', label: `${day.tasks.completed} done` });
       if (day.tasks.pending > 0) dots.push({ color: 'bg-amber-400', label: `${day.tasks.pending} pending` });
+      if (day.calendar_events > 0) dots.push({ color: 'bg-violet-400', label: `${day.calendar_events} event${day.calendar_events > 1 ? 's' : ''}` });
       return dots;
     },
     []

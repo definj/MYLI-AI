@@ -236,25 +236,25 @@ export function SocialClient({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5">
-        <p className="mb-3 font-mono text-xs uppercase tracking-widest text-accent-muted">Share a win</p>
+      <div className="rounded-[16px] border border-white/10 bg-white/[0.04] p-5">
+        <p className="mb-3 text-[11px] uppercase tracking-[0.2em] text-white/45">Share a win</p>
         <div className="flex flex-col gap-3">
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Share text, add an image, or both..."
-            className="h-11 bg-bg-secondary border-none text-accent-white placeholder:text-accent-muted"
+            className="h-11 border-white/10 bg-black/25 text-white placeholder:text-white/45"
           />
           <div className="flex flex-col gap-3 md:flex-row">
             <Input
               type="file"
               accept="image/*"
               onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
-              className="h-11 bg-bg-secondary border-none text-accent-muted file:mr-2 file:rounded-md file:border-0 file:bg-bg-primary file:px-3 file:py-1.5 file:text-accent-white md:flex-1"
+              className="h-11 border-white/10 bg-black/25 text-white/80 file:mr-2 file:rounded-md file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-white md:flex-1"
             />
             <Button
               type="button"
-              className="bg-accent-gold text-bg-primary hover:bg-accent-gold/90"
+              className="bg-gradient-to-r from-[#7B5EA7] to-[#FF6B35] text-white hover:opacity-90"
               onClick={createPost}
               disabled={isPosting || (!draft.trim() && !imageFile)}
             >
@@ -262,21 +262,21 @@ export function SocialClient({
             </Button>
           </div>
         </div>
-        <p className="mt-2 text-xs text-accent-muted">Posts can include text only, image only, or text + image.</p>
+        <p className="mt-2 text-xs text-white/50">Posts can include text only, image only, or text + image.</p>
         {imageFile && (
-          <p className="mt-2 text-xs text-accent-muted">
+          <p className="mt-2 text-xs text-white/55">
             Attached image: {imageFile.name}
           </p>
         )}
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
       </div>
 
-      <div className="flex items-center gap-2">
-        <p className="font-mono text-xs uppercase tracking-widest text-accent-muted">Sort</p>
+      <div className="flex items-center gap-2 rounded-[16px] border border-white/10 bg-white/[0.04] px-4 py-3">
+        <p className="text-[11px] uppercase tracking-[0.2em] text-white/45">Sort</p>
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as SortOption)}
-          className="rounded-md border border-bg-surface bg-bg-surface px-3 py-1.5 text-sm text-accent-white"
+          className="rounded-md border border-white/10 bg-black/25 px-3 py-1.5 text-sm text-white"
         >
           <option value="newest">Newest</option>
           <option value="oldest">Oldest</option>
@@ -304,11 +304,11 @@ export function SocialClient({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="rounded-xl border border-bg-surface bg-bg-surface/70 p-5"
+              className="rounded-[16px] border border-white/10 bg-white/[0.04] p-5"
             >
-              {text && <p className="text-sm text-accent-white">{text}</p>}
+              {text && <p className="text-sm text-white">{text}</p>}
               {imageUrl && (
-                <div className="mt-3 overflow-hidden rounded-lg border border-bg-surface">
+                <div className="mt-3 overflow-hidden rounded-lg border border-white/10">
                   <Image
                     src={imageUrl}
                     alt="Post image"
@@ -323,9 +323,9 @@ export function SocialClient({
                   type="button"
                   onClick={() => likePost(post.id)}
                   disabled={likingPostIds.has(post.id)}
-                  className="flex items-center gap-1.5 rounded-md bg-bg-secondary px-3 py-1.5 text-xs text-accent-muted transition-colors hover:text-accent-gold disabled:opacity-60"
+                  className="flex items-center gap-1.5 rounded-md bg-black/25 px-3 py-1.5 text-xs text-white/65 transition-colors hover:text-[#FF9A5C] disabled:opacity-60"
                 >
-                  <span className={isLiked ? 'text-accent-gold' : ''}>&#9829;</span>
+                  <span className={isLiked ? 'text-[#FF9A5C]' : ''}>&#9829;</span>
                   <span>{post.likes_count ?? 0}</span>
                 </button>
                 <div className="flex items-center gap-2">
@@ -334,14 +334,14 @@ export function SocialClient({
                       type="button"
                       onClick={() => void deletePost(post.id)}
                       disabled={deletingPostIds.has(post.id)}
-                      className="rounded-md bg-bg-secondary px-3 py-1.5 text-xs text-danger transition-colors hover:text-danger/80 disabled:opacity-60"
+                      className="rounded-md bg-black/25 px-3 py-1.5 text-xs text-red-300 transition-colors hover:text-red-200 disabled:opacity-60"
                     >
                       {deletingPostIds.has(post.id) ? 'Deleting...' : 'Delete'}
                     </button>
                   )}
                   <button
                     type="button"
-                    className="rounded-md bg-bg-secondary px-3 py-1.5 text-xs text-accent-muted transition-colors hover:text-accent-gold"
+                    className="rounded-md bg-black/25 px-3 py-1.5 text-xs text-white/65 transition-colors hover:text-[#A78BFA]"
                     onClick={() =>
                       setExpandedThreadPostIds((prev) => {
                         const next = new Set(prev);
@@ -356,7 +356,7 @@ export function SocialClient({
                   >
                     Thread ({post.comments_count ?? 0})
                   </button>
-                  <p className="font-mono text-xs text-accent-muted">
+                  <p className="text-xs text-white/45">
                     {new Date(post.created_at).toLocaleDateString(undefined, {
                       month: 'short',
                       day: 'numeric',
@@ -368,22 +368,22 @@ export function SocialClient({
               </div>
 
               {isThreadOpen && (
-                <div className="mt-4 rounded-lg border border-bg-surface bg-bg-secondary/40 p-3">
+                <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
                   <div className="space-y-3">
                     {rootReplies.map((reply) => (
-                      <div key={reply.id} className="rounded-md bg-bg-secondary p-3">
-                        <p className="text-sm text-accent-white">{reply.content}</p>
+                      <div key={reply.id} className="rounded-md bg-black/30 p-3">
+                        <p className="text-sm text-white">{reply.content}</p>
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <button
                             type="button"
-                            className="text-xs text-accent-muted hover:text-accent-gold"
+                            className="text-xs text-white/60 hover:text-[#A78BFA]"
                             onClick={() =>
                               setReplyTargetByPost((prev) => ({ ...prev, [post.id]: reply.id }))
                             }
                           >
                             Reply
                           </button>
-                          <p className="font-mono text-xs text-accent-muted">
+                          <p className="text-xs text-white/45">
                             {new Date(reply.created_at).toLocaleDateString(undefined, {
                               month: 'short',
                               day: 'numeric',
@@ -398,15 +398,15 @@ export function SocialClient({
                           .map((child) => (
                             <div
                               key={child.id}
-                              className="mt-2 rounded-md border border-bg-surface bg-bg-primary/40 p-2"
+                              className="mt-2 rounded-md border border-white/10 bg-black/35 p-2"
                             >
-                              <p className="text-xs text-accent-white">{child.content}</p>
+                              <p className="text-xs text-white">{child.content}</p>
                             </div>
                           ))}
                       </div>
                     ))}
                     {replies.length === 0 && (
-                      <p className="text-sm text-accent-muted">No replies yet. Start the thread.</p>
+                      <p className="text-sm text-white/55">No replies yet. Start the thread.</p>
                     )}
                   </div>
 
@@ -417,11 +417,11 @@ export function SocialClient({
                         setReplyDraftsByPost((prev) => ({ ...prev, [post.id]: e.target.value }))
                       }
                       placeholder="Write a reply..."
-                      className="h-10 bg-bg-secondary border-none text-accent-white placeholder:text-accent-muted"
+                      className="h-10 border-white/10 bg-black/25 text-white placeholder:text-white/45"
                     />
                     <Button
                       type="button"
-                      className="bg-accent-gold text-bg-primary hover:bg-accent-gold/90"
+                      className="bg-gradient-to-r from-[#7B5EA7] to-[#FF6B35] text-white hover:opacity-90"
                       disabled={replyingPostIds.has(post.id) || !(replyDraftsByPost[post.id] ?? '').trim()}
                       onClick={() => void createReply(post.id)}
                     >
@@ -431,10 +431,10 @@ export function SocialClient({
 
                   {replyTargetByPost[post.id] && (
                     <div className="mt-2 flex items-center justify-between">
-                      <p className="text-xs text-accent-muted">Replying to a thread message.</p>
+                      <p className="text-xs text-white/55">Replying to a thread message.</p>
                       <button
                         type="button"
-                        className="text-xs text-accent-muted hover:text-accent-gold"
+                        className="text-xs text-white/55 hover:text-[#A78BFA]"
                         onClick={() =>
                           setReplyTargetByPost((prev) => ({ ...prev, [post.id]: null }))
                         }
@@ -451,8 +451,8 @@ export function SocialClient({
       </AnimatePresence>
 
       {sortedPosts.length === 0 && (
-        <div className="rounded-xl border border-bg-surface bg-bg-surface/40 p-8 text-center">
-          <p className="text-accent-muted">No posts yet. Be the first to share a win.</p>
+        <div className="rounded-[16px] border border-white/10 bg-white/[0.04] p-8 text-center">
+          <p className="text-white/55">No posts yet. Be the first to share a win.</p>
         </div>
       )}
     </div>

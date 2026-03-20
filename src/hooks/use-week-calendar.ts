@@ -7,6 +7,7 @@ type DayData = {
   meals: number;
   workouts: number;
   tasks: { pending: number; completed: number };
+  calendar_events: number;
 };
 
 type CalendarApiResponse = { data: Record<string, DayData> };
