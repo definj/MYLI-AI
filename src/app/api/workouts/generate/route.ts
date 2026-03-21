@@ -1,33 +1,18 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { callAnthropicText, safeJsonParse } from '@/lib/ai/anthropic';
+import { countTrainingLikeDays, resolveGoalPreset, SEVEN_DAY_PRESETS } from '@/lib/workouts/goal-presets';
+import { generateWeekPlanWithDailyAI, type ApiWorkoutDay } from '@/lib/workouts/generate-week-daily';
 import {
-  assertWeeklyWorkoutTypesVary,
   buildUserWorkoutProfile,
-  buildWeekPlanFromSkeleton,
-  enrichDaysWithSkeleton,
-  skeletonToPromptBlock,
   tierExperienceForTierIndex,
-  validateUniqueDailyProgramming,
   weeklyPlanBuilder,
-  type GeneratedWorkoutDay,
   type WeeklyPlanSkeleton,
 } from '@/lib/workouts/weekly-plan-builder';
 
-type WorkoutTier = {
-  intensity: string;
-  weekly_days: number;
-  focus: string;
-  sample_day: Array<{
-    exercise: string;
-    sets: number;
-    reps: string;
-    rest_sec: number;
-  }>;
-};
-
 type WorkoutDay = {
   date: string; // YYYY-MM-DD
+  day_name?: string;
   title: string;
   focus: string;
   /** Unique label for the day (Push, Pull, Legs, etc.) — must differ across the week */
@@ -45,6 +30,19 @@ type WeekPlan = {
   week_start: string; // YYYY-MM-DD
   split_name: string;
   days: WorkoutDay[]; // length 7
+};
+
+type WorkoutTier = {
+  intensity: string;
+  weekly_days: number;
+  focus: string;
+  sample_day: Array<{
+    exercise: string;
+    sets: number;
+    reps: string;
+    rest_sec: number;
+  }>;
+  week_plan?: WeekPlan;
 };
 
 type WorkoutPlanPayload = {
@@ -78,67 +76,6 @@ function startOfWeekMonday(date: Date) {
   return d;
 }
 
-function fallbackPlans(goal: string): WorkoutPlanPayload {
-  const sampleExercises = [
-    { exercise: 'Barbell Squat', sets: 4, reps: '8-10', rest_sec: 90 },
-    { exercise: 'Romanian Deadlift', sets: 3, reps: '10-12', rest_sec: 90 },
-    { exercise: 'Bench Press', sets: 4, reps: '8-10', rest_sec: 90 },
-    { exercise: 'Bent Over Row', sets: 3, reps: '10-12', rest_sec: 60 },
-    { exercise: 'Overhead Press', sets: 3, reps: '8-10', rest_sec: 60 },
-  ];
-
-  return {
-    tiers: [
-      {
-        intensity: 'moderate',
-        weekly_days: 3,
-        focus: 'Full-body technique and recovery',
-        sample_day: sampleExercises.slice(0, 3),
-      },
-      {
-        intensity: 'medium',
-        weekly_days: 4,
-        focus: 'Upper/lower split with progressive overload',
-        sample_day: sampleExercises.slice(0, 4),
-      },
-      {
-        intensity: 'intense',
-        weekly_days: 6,
-        focus: 'Push/pull/legs split with volume tracking',
-        sample_day: sampleExercises,
-      },
-    ],
-    note: `Showing default plans for goal: ${goal || 'general fitness'}. Fill in your equipment and training style above and regenerate for a personalized plan.`,
-  };
-}
-
-function normalizePlanPayload(input: Partial<WorkoutPlanPayload> | null): WorkoutPlanPayload | null {
-  if (!input || !Array.isArray(input.tiers)) return null;
-
-  const tiers = input.tiers
-    .map((tier) => ({
-      intensity: String((tier as any).intensity ?? ''),
-      weekly_days: Number((tier as any).weekly_days ?? 0),
-      focus: String((tier as any).focus ?? ''),
-      sample_day: Array.isArray((tier as any).sample_day)
-        ? (tier as any).sample_day.map((ex: any) => ({
-            exercise: String(ex.exercise ?? ''),
-            sets: Number(ex.sets ?? 0),
-            reps: String(ex.reps ?? ''),
-            rest_sec: Number(ex.rest_sec ?? 60),
-          }))
-        : [],
-      ...(((tier as any).week_plan) ? { week_plan: (tier as any).week_plan } : {}),
-    }))
-    .filter((tier) => tier.intensity && Number.isFinite(tier.weekly_days) && tier.weekly_days > 0 && tier.focus);
-
-  if (tiers.length === 0) return null;
-  return {
-    tiers,
-    note: String(input.note ?? 'AI generated workout plan tiers.'),
-  };
-}
-
 function normalizeWeekPlan(input: unknown): WeekPlan | null {
   const obj = input as Partial<WeekPlan> | null;
   if (!obj || typeof obj.week_start !== 'string' || !Array.isArray(obj.days)) return null;
@@ -165,6 +102,7 @@ function normalizeWeekPlan(input: unknown): WeekPlan | null {
 
       return {
         date: String(day.date ?? ''),
+        day_name: typeof (day as any).day_name === 'string' ? String((day as any).day_name) : undefined,
         title: String(day.title ?? ''),
         focus: String(day.focus ?? ''),
         workout_type:
@@ -188,73 +126,16 @@ function normalizeWeekPlan(input: unknown): WeekPlan | null {
   };
 }
 
-function workoutDayToGenerated(d: WorkoutDay): GeneratedWorkoutDay {
+function apiDayToWorkoutDay(d: ApiWorkoutDay): WorkoutDay {
   return {
     date: d.date,
-    title: d.title,
-    focus: d.focus,
-    workout_type: d.workout_type?.trim() || d.title,
-    focus_muscles: d.focus_muscles ?? [],
-    exercises: d.exercises,
-  };
-}
-
-function generatedToWorkoutDay(d: GeneratedWorkoutDay): WorkoutDay {
-  return {
-    date: d.date,
+    day_name: d.day_name,
     title: d.title,
     focus: d.focus,
     workout_type: d.workout_type,
     focus_muscles: d.focus_muscles,
     exercises: d.exercises,
   };
-}
-
-function weekPlanFromGenerated(result: ReturnType<typeof buildWeekPlanFromSkeleton>): WeekPlan {
-  return {
-    week_start: result.week_start,
-    split_name: result.split_name,
-    days: result.days.map(generatedToWorkoutDay),
-  };
-}
-
-function ensureTierWeekPlansWithSkeletons(
-  payload: WorkoutPlanPayloadV2,
-  tierSkeletons: WeeklyPlanSkeleton[]
-): WorkoutPlanPayloadV2 {
-  const tiers = payload.tiers.map((tier, idx) => {
-    const skeleton =
-      tierSkeletons[idx] ?? tierSkeletons[tierSkeletons.length - 1] ?? tierSkeletons[0];
-    const te = tierExperienceForTierIndex(idx);
-
-    const tierFromAI = normalizeWeekPlan((tier as any).week_plan);
-
-    let week_plan: WeekPlan;
-
-    if (!tierFromAI || tierFromAI.days.length !== 7) {
-      week_plan = weekPlanFromGenerated(buildWeekPlanFromSkeleton(skeleton, te));
-    } else {
-      const genDays = tierFromAI.days.map(workoutDayToGenerated);
-      const enriched = enrichDaysWithSkeleton(genDays, skeleton);
-      const validated = validateUniqueDailyProgramming(enriched);
-      if (!validated.ok) {
-        console.warn(`[workout] Tier ${idx} AI output failed uniqueness checks:`, validated.errors);
-        week_plan = weekPlanFromGenerated(buildWeekPlanFromSkeleton(skeleton, te));
-      } else {
-        week_plan = {
-          week_start: tierFromAI.week_start,
-          split_name: tierFromAI.split_name || skeleton.split_name,
-          days: enriched.map(generatedToWorkoutDay),
-        };
-      }
-    }
-
-    assertWeeklyWorkoutTypesVary(week_plan.days.map((d) => d.workout_type || d.title));
-
-    return { ...tier, week_plan };
-  });
-
-  return { ...payload, tiers };
 }
 
 export async function POST(request: Request) {
@@ -400,106 +281,62 @@ Requirements:
   }
 
   const goalStr = physicalProfile?.goal ?? 'general fitness';
+  const presetKey = resolveGoalPreset(goalStr);
+  const weeklyDaysFromPreset = countTrainingLikeDays(SEVEN_DAY_PRESETS[presetKey]);
+
   const tierSkeletons: WeeklyPlanSkeleton[] = [0, 1, 2].map((idx) =>
     weeklyPlanBuilder(
       weekStart,
       buildUserWorkoutProfile({
         goal: goalStr,
         tierIndex: idx,
-        tierWeeklyDays: [3, 4, 5][idx],
         equipment,
         trainingStyle,
       })
     )
   );
 
-  const skeletonBlocks = tierSkeletons
-    .map(
-      (sk, i) =>
-        `=== TIER ${i + 1} (tier index ${i}) — REQUIRED WEEKLY STRUCTURE ===\nYou MUST use these exact dates and workout_type strings. Each training day needs a UNIQUE exercise list (no duplicated sessions across the week).\n${skeletonToPromptBlock(sk)}`
-    )
-    .join('\n\n');
+  const tiersBuilt: WorkoutTier[] = [];
 
-  const prompt = `Create 3 workout plan tiers for this user.
-User profile: ${profileContext}
-Equipment access: ${equipment || 'Not specified'}
-Typical training style: ${trainingStyle || 'Not specified'}
+  for (let tierIdx = 0; tierIdx < tierSkeletons.length; tierIdx++) {
+    const skeleton = tierSkeletons[tierIdx];
+    const te = tierExperienceForTierIndex(tierIdx);
 
-Generate a complete 7-day week plan for EACH tier, starting on ${weekStart} (Monday).
-Apply exercise science: progressive overload within the week, alternate muscle groups / stress so heavy lower-body days are not back-to-back with another heavy lower day, and use active recovery between hard sessions where the structure below implies it.
+    const generated = await generateWeekPlanWithDailyAI({
+      skeleton,
+      profileContext,
+      equipment,
+      trainingStyle,
+      tierExperience: te,
+      tierIndex: tierIdx,
+    });
 
-${skeletonBlocks}
+    const week_plan: WeekPlan = {
+      week_start: generated.week_start,
+      split_name: generated.split_name,
+      days: generated.days.map(apiDayToWorkoutDay),
+    };
 
-Return a single JSON object (no markdown, no explanation) with this exact structure:
-{
-  "tiers": [
-    {
-      "intensity": "moderate",
-      "weekly_days": 3,
-      "focus": "Brief description of the training focus",
-      "sample_day": [
-        { "exercise": "Exercise Name", "sets": 3, "reps": "8-10", "rest_sec": 90 }
-      ],
-      "week_plan": {
-        "week_start": "${weekStart}",
-        "split_name": "Descriptive split name",
-        "days": [
-          {
-            "date": "YYYY-MM-DD",
-            "title": "Must align with workout_type for that date",
-            "workout_type": "EXACT string from the skeleton for this date",
-            "focus_muscles": ["chest", "back"],
-            "focus": "1 sentence describing this day's purpose",
-            "exercises": [
-              { "exercise": "Exercise Name", "sets": 3, "reps": "8-10", "rest_sec": 90 }
-            ]
-          }
-        ]
-      }
-    }
-  ],
-  "note": "Brief explanation of the programming approach"
-}
+    const intensity = tierIdx === 0 ? 'moderate' : tierIdx === 1 ? 'medium' : 'intense';
+    const trainingSlice = week_plan.days.find(
+      (d) => d.exercises.length > 0 && !/rest|recovery/i.test(d.workout_type || d.title)
+    );
+    const sample_day =
+      trainingSlice?.exercises.slice(0, 5) ?? week_plan.days[0].exercises.slice(0, 3);
 
-CRITICAL UNIQUENESS RULES:
-- For EACH tier, copy the skeleton's workout_type string for each date EXACTLY (those labels are already unique per day).
-- Every training day must have a DIFFERENT exercise prescription than every other training day (no duplicated exercise lists).
-- Rest/recovery days: only recovery modalities; title must include "Rest" or "Recovery"; sets=1 and reps as duration where appropriate.
-
-Tier volume:
-- Tier 1 (moderate): 3 training days + 4 rest/recovery days. 4-5 exercises per training day.
-- Tier 2 (medium): 4 training days + 3 rest/recovery days. 5-6 exercises per training day.
-- Tier 3 (intense): 5 training days + 2 rest/recovery days. 6-8 exercises per training day.
-
-REST/RECOVERY DAY RULES (strictly enforced):
-- Rest/Recovery days MUST only contain recovery activities: outdoor walk, easy cycling, yoga, mobility, stretching, breathwork, foam rolling, sauna.
-- NEVER put lifting, HIIT, sprints, or hard conditioning on a Rest/Recovery day.
-
-Training day rules:
-- Start with compound movements (squat, hinge, press, row, carry pattern) where appropriate for that workout_type.
-- Match goal: ${goalStr}.
-- All 7 days must have dates in order Mon–Sun for the week starting ${weekStart}.
-- Every tier.week_plan.days must contain EXACTLY 7 objects.`; 
-
-  const ai = await callAnthropicText(
-    [{ role: 'user', content: prompt }],
-    'You are an expert strength and conditioning coach. Return strict JSON only, no markdown fences.'
-  );
-
-  const fallback = fallbackPlans(physicalProfile?.goal ?? '');
-  let planPayload: WorkoutPlanPayloadV2 = fallback;
-
-  if (!ai.ok) {
-    console.error('[workout] AI call failed:', (ai as any).error ?? 'unknown error');
-  } else {
-    const parsed = safeJsonParse<Partial<WorkoutPlanPayloadV2>>(ai.text);
-    if (!parsed) {
-      console.error('[workout] Failed to parse AI JSON response. Raw text:', ai.text?.slice(0, 500));
-    }
-    const normalized = normalizePlanPayload(parsed) ?? fallback;
-    planPayload = normalized;
+    tiersBuilt.push({
+      intensity,
+      weekly_days: weeklyDaysFromPreset,
+      focus: `${presetKey} · ${intensity} · day-by-day generation`,
+      sample_day,
+      week_plan,
+    });
   }
-  planPayload = ensureTierWeekPlansWithSkeletons(planPayload, tierSkeletons);
+
+  const planPayload: WorkoutPlanPayloadV2 = {
+    tiers: tiersBuilt,
+    note: `7-day ${presetKey} split. Each training day was generated separately with cumulative exercise tracking so sessions stay unique.`,
+  };
 
   await supabase.from('workout_plans').update({ active: false }).eq('user_id', user.id);
 

@@ -3,6 +3,14 @@
  * (and distinct recovery/cardio labels) so AI or fallbacks cannot collapse into clones.
  */
 
+import {
+  countTrainingLikeDays,
+  resolveGoalPreset,
+  SEVEN_DAY_PRESETS,
+  type DayRole,
+  type GoalPresetKey,
+} from './goal-presets';
+
 export type GoalCategory =
   | 'fat_loss'
   | 'endurance'
@@ -28,7 +36,7 @@ export type UserWorkoutProfile = {
   targetAreas: string[];
 };
 
-export type DayRole = 'training' | 'rest' | 'recovery' | 'cardio' | 'conditioning';
+export type { DayRole };
 
 export type DaySkeleton = {
   /** YYYY-MM-DD */
@@ -44,6 +52,8 @@ export type WeeklyPlanSkeleton = {
   week_start: string;
   split_name: string;
   goal_category: GoalCategory;
+  /** Which 7-day preset was applied */
+  goal_preset?: GoalPresetKey;
   days: DaySkeleton[];
 };
 
@@ -90,102 +100,12 @@ export function tierExperienceForTierIndex(tierIndex: number): TierExperience {
   return 'advanced';
 }
 
-/** Maps tier index (0,1,2) + AI tier weekly_days to a clamped training count */
-export function resolveWeeklyTrainingDays(tierWeeklyDays: number, tierIndex: number): number {
-  const clamped = Math.max(3, Math.min(6, Math.round(tierWeeklyDays)));
-  if (tierIndex === 0) return Math.min(3, clamped);
-  if (tierIndex === 1) return Math.min(5, Math.max(4, clamped));
-  return Math.min(6, Math.max(5, clamped));
-}
-
-function trainingIndexesForCount(n: number): number[] {
-  const clamped = Math.max(3, Math.min(6, Math.round(n)));
-  if (clamped <= 3) return [0, 2, 4];
-  if (clamped === 4) return [0, 1, 3, 5];
-  if (clamped === 5) return [0, 1, 2, 4, 5];
-  return [0, 1, 2, 3, 4, 5];
-}
-
 function noteForAreas(areas: string[]): string {
   if (!areas.length) return 'Balance volume across the whole body.';
   return `Emphasize quality work for: ${areas.join(', ')} while keeping the program balanced.`;
 }
 
-/** Build unique workout types for each training slot (order matches trainingIndexes order) */
-function buildTrainingTypes(
-  category: GoalCategory,
-  count: number,
-  tier: TierExperience,
-  areas: string[]
-): string[] {
-  const areaNote = noteForAreas(areas);
-
-  const ppl6 = ['Push (Strength)', 'Pull (Strength)', 'Legs & Glutes', 'Push (Hypertrophy)', 'Pull (Hypertrophy)', 'Legs & Posterior Chain'];
-  const ppl5 = ['Push', 'Pull', 'Legs', 'Upper (Strength)', 'Conditioning & Core'];
-  const ul4 = ['Upper A (Horizontal Push/Pull)', 'Lower A (Squat Pattern)', 'Upper B (Vertical Push/Pull)', 'Lower B (Hinge Pattern)'];
-  const fb3 = ['Full Body A (Squat & Press)', 'Full Body B (Hinge & Row)', 'Full Body C (Single-Leg & Arms)'];
-
-  const fat6 = [
-    'Full Body Metabolic A',
-    'HIIT & Core',
-    'Full Body Metabolic B',
-    'Zone 2 Cardio',
-    'Full Body Metabolic C',
-    'Athletic Conditioning',
-  ];
-  const athletic6 = ['Max Strength', 'Power & Plyometrics', 'Speed & Agility', 'Conditioning Circuit', 'Accessory & Weak Points', 'Mobility & Prehab'];
-
-  if (count === 3) {
-    if (category === 'beginner' || tier === 'beginner') {
-      return fb3;
-    }
-    if (category === 'fat_loss' || category === 'endurance') {
-      return ['Full Body A (Strength-Endurance)', 'HIIT Metabolic Circuit', 'Full Body B (Strength-Endurance)'];
-    }
-    if (category === 'toning') {
-      return ['Upper Body (Strength)', 'Lower Body (Strength)', 'Full Body Circuit & Core'];
-    }
-    return fb3;
-  }
-
-  if (count === 4) {
-    if (category === 'toning' || category === 'general') {
-      return ul4;
-    }
-    if (category === 'fat_loss' || category === 'endurance') {
-      return ['Full Body A', 'Conditioning & Core', 'Full Body B', 'Zone 2 + Mobility'];
-    }
-    return ul4;
-  }
-
-  if (count === 5) {
-    if (category === 'muscle' || category === 'general') {
-      return ppl5;
-    }
-    if (category === 'athletic') {
-      return ['Strength Primary', 'Power', 'Lower Body Strength', 'Upper Body Volume', 'Energy Systems'];
-    }
-    if (category === 'fat_loss' || category === 'endurance') {
-      return ['Full Body A', 'HIIT', 'Full Body B', 'Steady-State Cardio', 'Full Body C'];
-    }
-    return ppl5;
-  }
-
-  // count === 6
-  if (category === 'athletic') {
-    return athletic6;
-  }
-  if (category === 'muscle' || category === 'general' || category === 'toning') {
-    return ppl6;
-  }
-  if (category === 'fat_loss' || category === 'endurance') {
-    return fat6;
-  }
-  return ppl6;
-}
-
 function focusForType(wt: string, areas: string[]): string[] {
-  const a = new Set(areas);
   const base: string[] = [];
   if (/push|chest|shoulder|tricep/i.test(wt)) {
     base.push('chest', 'shoulders', 'triceps');
@@ -209,70 +129,43 @@ function focusForType(wt: string, areas: string[]): string[] {
   return [...new Set(base)];
 }
 
-function recoveryLabel(index: number, trainingNeighborsHeavy: boolean): { workoutType: string; muscles: string[]; note: string } {
-  const variants = [
-    { workoutType: 'Active Recovery (Walk & Mobility)', muscles: ['mobility', 'low-intensity'], note: 'Easy movement; no hard lifting.' },
-    { workoutType: 'Recovery (Yoga & Stretching)', muscles: ['mobility', 'core stability'], note: 'Parasympathetic recovery; no resistance training.' },
-    { workoutType: 'Rest / Recovery', muscles: [], note: 'Complete rest or very light walking only.' },
-    { workoutType: 'Active Recovery (Easy Bike / Swim)', muscles: ['conditioning', 'recovery'], note: 'Low impact only; keep effort conversational.' },
-  ];
-  const v = variants[index % variants.length];
-  if (trainingNeighborsHeavy) {
-    return { ...v, note: v.note + ' Sandwiched between hard sessions—keep intensity low.' };
-  }
-  return v;
-}
-
 /**
- * Main entry: 7 days, unique workoutType for every day (including distinct recovery labels).
+ * Main entry: 7 days from GOAL → fixed split (goal-presets), unique workoutType per day.
  */
 export function weeklyPlanBuilder(
   weekStart: string,
   profile: UserWorkoutProfile
 ): WeeklyPlanSkeleton {
-  const trainingCount = profile.weeklyTrainingDays;
-  const indexes = trainingIndexesForCount(trainingCount);
-  const trainingTypes = buildTrainingTypes(profile.goalCategory, trainingCount, profile.tier, profile.targetAreas);
-
-  const trainingSet = new Set(indexes);
-  let t = 0;
+  const presetKey = resolveGoalPreset(profile.goal);
+  const preset = SEVEN_DAY_PRESETS[presetKey];
   const days: DaySkeleton[] = [];
 
   for (let i = 0; i < 7; i++) {
     const date = addDaysDateOnly(weekStart, i);
     const dow = DAY_NAMES[i];
+    const slot = preset[i];
+    const workoutType = slot.workoutType;
+    const dayRole = slot.dayRole;
+    const focusMuscles = focusForType(workoutType, profile.targetAreas);
+    const sequencingNote = `${dow}: ${workoutType}. ${noteForAreas(profile.targetAreas)} Each day is generated independently — do not repeat exercises from earlier in the week.`;
 
-    if (trainingSet.has(i)) {
-      const workoutType = trainingTypes[t] ?? `Training Session ${t + 1}`;
-      t += 1;
-      const focusMuscles = focusForType(workoutType, profile.targetAreas);
-      const sequencingNote = `${dow}: ${workoutType}. ${noteForAreas(profile.targetAreas)} Avoid repeating the same primary lifts as other days this week.`;
-      days.push({
-        date,
-        workoutType,
-        focusMuscles,
-        dayRole: /hiit|conditioning|cardio|zone|metabolic/i.test(workoutType) ? 'conditioning' : 'training',
-        sequencingNote,
-      });
-    } else {
-      const prevHeavy = i > 0 && trainingSet.has(i - 1);
-      const rec = recoveryLabel(i, prevHeavy);
-      days.push({
-        date,
-        workoutType: rec.workoutType,
-        focusMuscles: rec.muscles,
-        dayRole: /Rest/i.test(rec.workoutType) ? 'rest' : 'recovery',
-        sequencingNote: `${dow}: ${rec.note}`,
-      });
-    }
+    days.push({
+      date,
+      workoutType,
+      focusMuscles,
+      dayRole,
+      sequencingNote,
+    });
   }
 
-  const splitName = `${profile.goalCategory} · ${trainingCount} sessions (${profile.tier})`;
+  const trainingCount = countTrainingLikeDays(preset);
+  const splitName = `${presetKey} · ${trainingCount} training-like days · ${profile.tier}`;
 
   return {
     week_start: weekStart,
     split_name: splitName,
     goal_category: profile.goalCategory,
+    goal_preset: presetKey,
     days,
   };
 }
@@ -280,13 +173,15 @@ export function weeklyPlanBuilder(
 export function buildUserWorkoutProfile(params: {
   goal: string;
   tierIndex: number;
-  tierWeeklyDays: number;
+  /** Ignored — weekly volume comes from the 7-day goal preset */
+  tierWeeklyDays?: number;
   equipment?: string;
   trainingStyle?: string;
 }): UserWorkoutProfile {
   const goalCategory = categorizeGoal(params.goal);
   const targetAreas = extractTargetAreas(params.goal, params.equipment ?? '', params.trainingStyle ?? '');
-  const weeklyTrainingDays = resolveWeeklyTrainingDays(params.tierWeeklyDays, params.tierIndex);
+  const presetKey = resolveGoalPreset(params.goal);
+  const weeklyTrainingDays = countTrainingLikeDays(SEVEN_DAY_PRESETS[presetKey]);
   return {
     goal: params.goal,
     goalCategory,

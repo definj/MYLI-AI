@@ -6,11 +6,17 @@ type AnthropicMessage = {
   content: string;
 };
 
-export async function callAnthropicText(messages: AnthropicMessage[], system?: string) {
+export async function callAnthropicText(
+  messages: AnthropicMessage[],
+  system?: string,
+  options?: { max_tokens?: number }
+) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return { ok: false as const, error: 'Missing ANTHROPIC_API_KEY' };
   }
+
+  const max_tokens = options?.max_tokens ?? 1024;
 
   const response = await fetch(API_URL, {
     method: 'POST',
@@ -21,7 +27,7 @@ export async function callAnthropicText(messages: AnthropicMessage[], system?: s
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens,
       ...(system ? { system } : {}),
       messages: messages.map((m) => ({ role: m.role, content: [{ type: 'text', text: m.content }] })),
     }),
