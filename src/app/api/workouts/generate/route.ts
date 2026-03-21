@@ -366,6 +366,23 @@ Requirements:
 
   await supabase.from('workout_plans').update({ active: false }).eq('user_id', user.id);
 
+  // Replace existing rows for this week so we don't accumulate duplicate tiers (upsert behavior).
+  const { data: existingPlans } = await supabase
+    .from('workout_plans')
+    .select('id, plan_json')
+    .eq('user_id', user.id);
+
+  const idsToReplace = (existingPlans ?? [])
+    .filter((row) => {
+      const meta = (row.plan_json as { meta?: { week_start?: string } } | null)?.meta;
+      return meta?.week_start === weekStart;
+    })
+    .map((r) => r.id);
+
+  if (idsToReplace.length > 0) {
+    await supabase.from('workout_plans').delete().in('id', idsToReplace);
+  }
+
   const inserts = (planPayload.tiers as unknown as WorkoutTierV2[]).map((tier, idx) => {
     const fallbackActiveIndex = planPayload.tiers.length - 1;
     const safeActiveIndex =

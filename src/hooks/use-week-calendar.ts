@@ -3,16 +3,23 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { ActivityMap } from '@/components/app/weekly-calendar';
 
-type DayData = {
+/** Per-day payload from GET /api/calendar/week */
+export type CalendarDayData = {
   meals: number;
   workouts: number;
   tasks: { pending: number; completed: number };
   calendar_events: number;
+  planned_workout?: {
+    title: string;
+    workout_type: string | null;
+    intensity: string;
+    completed: boolean;
+  };
 };
 
-type CalendarApiResponse = { data: Record<string, DayData> };
+type CalendarApiResponse = { data: Record<string, CalendarDayData> };
 
-type DotBuilder = (day: DayData) => Array<{ color: string; label: string }>;
+type DotBuilder = (day: CalendarDayData) => Array<{ color: string; label: string }>;
 
 function toIso(d: Date) {
   return d.toISOString().split('T')[0];
@@ -33,7 +40,7 @@ function getWeekRange(offset: number) {
 export function useWeekCalendar(buildDots: DotBuilder) {
   const [selectedDate, setSelectedDate] = useState(toIso(new Date()));
   const [weekOffset, setWeekOffset] = useState(0);
-  const [rawData, setRawData] = useState<Record<string, DayData>>({});
+  const [rawData, setRawData] = useState<Record<string, CalendarDayData>>({});
 
   const { start, end } = useMemo(() => getWeekRange(weekOffset), [weekOffset]);
 

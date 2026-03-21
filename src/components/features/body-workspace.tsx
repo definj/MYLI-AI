@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { WeeklyCalendar } from '@/components/app/weekly-calendar';
-import { useWeekCalendar } from '@/hooks/use-week-calendar';
+import { useWeekCalendar, type CalendarDayData } from '@/hooks/use-week-calendar';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,6 +67,40 @@ type AnalysisResponse = {
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack', 'liquids'] as const;
 
+function getCurrentWeekRangeLocal() {
+  const now = new Date();
+  const day = now.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(monday.getDate() + mondayOffset);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { start: monday.toISOString().split('T')[0], end: sunday.toISOString().split('T')[0] };
+}
+
+function hasScheduledDaysInRange(activeDays: Record<string, unknown>, start: string, end: string) {
+  return Object.keys(activeDays).some((d) => d >= start && d <= end);
+}
+
+function plannedWorkoutDotColor(planned: { workout_type: string | null; title: string }) {
+  const t = `${planned.workout_type || ''} ${planned.title}`.toLowerCase();
+  if (t.includes('rest') || t.includes('recovery')) return 'bg-gray-400';
+  if (t.includes('push')) return 'bg-blue-400';
+  if (t.includes('pull')) return 'bg-green-400';
+  if (t.includes('leg')) return 'bg-red-400';
+  if (t.includes('hiit') || t.includes('conditioning')) return 'bg-orange-400';
+  return 'bg-[#FF9A5C]';
+}
+
+type PlansHydrateResponse = PlanPayload & {
+  activeTierIndex: number | null;
+  activatedTierIndex: number | null;
+  equipment: string;
+  trainingStyle: string;
+  weekStart: string | null;
+};
+
 export function BodyWorkspace() {
   const searchParams = useSearchParams();
   const hasAutoStartedWorkout = useRef(false);
@@ -74,6 +108,7 @@ export function BodyWorkspace() {
   const mobileCameraInputRef = useRef<HTMLInputElement>(null);
 
   const [plans, setPlans] = useState<PlanPayload | null>(null);
+  const [plansHydrated, setPlansHydrated] = useState(false);
   const [activeTier, setActiveTier] = useState<number>(2);
   const [activatedTier, setActivatedTier] = useState<number | null>(null);
   const [activeDays, setActiveDays] = useState<Record<string, { title: string; focus: string; exercises: Exercise[] }>>({});
@@ -105,30 +140,24 @@ export function BodyWorkspace() {
   const [mealError, setMealError] = useState<string | null>(null);
   const [mealResult, setMealResult] = useState<AnalysisResponse | null>(null);
 
-  const buildDots = useCallback(
-    (day: { meals: number; workouts: number; tasks: { pending: number; completed: number }; calendar_events: number }) => {
-      const dots: Array<{ color: string; label: string }> = [];
-      if (day.workouts > 0) dots.push({ color: 'bg-blue-400', label: `${day.workouts} workouts` });
-      if (day.meals > 0) dots.push({ color: 'bg-emerald-400', label: `${day.meals} meals` });
-      if (day.calendar_events > 0) dots.push({ color: 'bg-violet-400', label: `${day.calendar_events} events` });
-      return dots;
-    },
-    []
-  );
+  const buildDots = useCallback((day: CalendarDayData) => {
+    const dots: Array<{ color: string; label: string }> = [];
+    if (day.planned_workout) {
+      const p = day.planned_workout;
+      const label = `${p.completed ? '✓ ' : ''}${p.workout_type || p.title}`;
+      dots.push({
+        color: p.completed ? 'bg-emerald-300/80' : plannedWorkoutDotColor(p),
+        label,
+      });
+    }
+    if (day.workouts > 0) dots.push({ color: 'bg-blue-400', label: `${day.workouts} workouts` });
+    if (day.meals > 0) dots.push({ color: 'bg-emerald-400', label: `${day.meals} meals` });
+    if (day.calendar_events > 0) dots.push({ color: 'bg-violet-400', label: `${day.calendar_events} events` });
+    return dots;
+  }, []);
 
   const { selectedDate, setSelectedDate, weekOffset, setWeekOffset, activityMap, refresh } = useWeekCalendar(buildDots);
   const selectedActiveDay = activeDays[selectedDate] ?? null;
-
-  const calendarActivityMap = useMemo(() => {
-    const merged = { ...activityMap };
-    for (const [date, planned] of Object.entries(activeDays)) {
-      const existing = merged[date]?.dots ?? [];
-      merged[date] = {
-        dots: [...existing, { color: 'bg-[#FF9A5C]', label: planned.title }],
-      };
-    }
-    return merged;
-  }, [activityMap, activeDays]);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,38 +189,94 @@ export function BodyWorkspace() {
     };
   }, [selectedDate]);
 
-  const generateWorkoutPlans = async () => {
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/workouts/plans')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: PlansHydrateResponse | null) => {
+        if (cancelled) return;
+        if (!json?.tiers?.length) {
+          setPlansHydrated(true);
+          return;
+        }
+        setPlans({
+          tiers: json.tiers,
+          note: typeof json.note === 'string' ? json.note : 'Loaded from saved workout plans.',
+        });
+        const tierIdx =
+          json.activeTierIndex != null && json.activeTierIndex >= 0 && json.activeTierIndex < json.tiers.length
+            ? json.activeTierIndex
+            : json.tiers.length - 1;
+        setActiveTier(tierIdx);
+        setActivatedTier(
+          json.activatedTierIndex != null && json.activatedTierIndex >= 0 && json.activatedTierIndex < json.tiers.length
+            ? json.activatedTierIndex
+            : tierIdx
+        );
+        setEquipment(json.equipment ?? '');
+        setTrainingStyle(json.trainingStyle ?? '');
+        const days = json.tiers[tierIdx]?.week_plan?.days ?? [];
+        const next: Record<string, { title: string; focus: string; exercises: Exercise[] }> = {};
+        for (const day of days) {
+          next[day.date] = {
+            title: day.title,
+            focus: day.focus,
+            exercises: Array.isArray(day.exercises) ? day.exercises : [],
+          };
+        }
+        setActiveDays(next);
+        setPlansHydrated(true);
+      })
+      .catch(() => {
+        if (!cancelled) setPlansHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const generateWorkoutPlans = useCallback(async () => {
+    const { start, end } = getCurrentWeekRangeLocal();
+    if (hasScheduledDaysInRange(activeDays, start, end)) {
+      const ok = window.confirm(
+        'This will replace your existing workouts for this week. The new plan will overwrite what you had saved. Continue?'
+      );
+      if (!ok) return;
+    }
     setGenerateError(null);
     setGenerateLoading(true);
-    const response = await fetch('/api/workouts/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        scope: 'week',
-        equipment,
-        training_style: trainingStyle,
-        active_tier_index: activeTier,
-      }),
-    });
-    setGenerateLoading(false);
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ error: 'Failed to generate plan.' }));
-      setGenerateError(body.error || 'Failed to generate plan.');
-      return;
+    try {
+      const response = await fetch('/api/workouts/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'week',
+          equipment,
+          training_style: trainingStyle,
+          active_tier_index: activeTier,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({ error: 'Failed to generate plan.' }));
+        setGenerateError(body.error || 'Failed to generate plan.');
+        return;
+      }
+      const data = (await response.json()) as PlanPayload;
+      const defaultTierIndex = data.tiers.length - 1;
+      const defaultDays = data.tiers[defaultTierIndex]?.week_plan?.days ?? [];
+      const next: Record<string, { title: string; focus: string; exercises: Exercise[] }> = {};
+      for (const day of defaultDays) {
+        next[day.date] = { title: day.title, focus: day.focus, exercises: day.exercises };
+      }
+      setPlans(data);
+      setActiveTier(defaultTierIndex);
+      setActivatedTier(defaultTierIndex);
+      setActiveDays(next);
+      refresh();
+    } finally {
+      setGenerateLoading(false);
     }
-    const data = (await response.json()) as PlanPayload;
-    const defaultTierIndex = data.tiers.length - 1;
-    const defaultDays = data.tiers[defaultTierIndex]?.week_plan?.days ?? [];
-    const next: Record<string, { title: string; focus: string; exercises: Exercise[] }> = {};
-    for (const day of defaultDays) {
-      next[day.date] = { title: day.title, focus: day.focus, exercises: day.exercises };
-    }
-    setPlans(data);
-    setActiveTier(defaultTierIndex);
-    setActivatedTier(defaultTierIndex);
-    setActiveDays(next);
-    refresh();
-  };
+  }, [activeDays, activeTier, equipment, refresh, trainingStyle]);
 
   const activatePlan = async () => {
     if (!plans) return;
@@ -223,6 +308,7 @@ export function BodyWorkspace() {
       }
       setActiveDays(next);
       setActivatedTier(activeTier);
+      refresh();
     } finally {
       setIsActivatingPlan(false);
     }
@@ -351,6 +437,11 @@ export function BodyWorkspace() {
         return;
       }
       setDayWorkouts((prev) => [data as WorkoutLog, ...prev]);
+      await fetch('/api/workouts/plan-day/complete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ date: selectedDate }),
+      }).catch(() => {});
       refresh();
     } finally {
       setPlannedSaving(false);
@@ -462,11 +553,12 @@ export function BodyWorkspace() {
 
   useEffect(() => {
     if (searchParams.get('startWorkout') !== '1' || hasAutoStartedWorkout.current) return;
+    if (!plansHydrated) return;
     hasAutoStartedWorkout.current = true;
     if (!plans) {
       void generateWorkoutPlans();
     }
-  }, [searchParams, plans]);
+  }, [searchParams, plans, plansHydrated, generateWorkoutPlans]);
 
   useEffect(() => {
     if (searchParams.get('openCamera') !== '1' || hasAutoOpenedCamera.current) return;
@@ -481,7 +573,7 @@ export function BodyWorkspace() {
         onDateSelect={handleDateSelect}
         weekOffset={weekOffset}
         onWeekChange={setWeekOffset}
-        activityMap={calendarActivityMap}
+        activityMap={activityMap}
         theme="physical"
       />
 
