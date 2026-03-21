@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+
+/** Per-day AI × 3 tiers can exceed default serverless timeouts (e.g. 10s on Vercel Hobby). */
+export const maxDuration = 300;
 import { callAnthropicText, safeJsonParse } from '@/lib/ai/anthropic';
 import { countTrainingLikeDays, resolveGoalPreset, SEVEN_DAY_PRESETS } from '@/lib/workouts/goal-presets';
 import { generateWeekPlanWithDailyAI, type ApiWorkoutDay } from '@/lib/workouts/generate-week-daily';
@@ -113,7 +116,12 @@ function normalizeWeekPlan(input: unknown): WeekPlan | null {
         exercises,
       } satisfies WorkoutDay;
     })
-    .filter((d) => d.date && d.title && (d.focus.trim().length > 0 || d.exercises.length > 0));
+    .filter(
+      (d) =>
+        d.date &&
+        (d.title?.trim() || d.workout_type?.trim()) &&
+        (d.focus.trim().length > 0 || d.exercises.length > 0)
+    );
 
   if (days.length !== 7) {
     console.error(`[workout] normalizeWeekPlan got ${days.length}/7 days — returning null`);
@@ -158,7 +166,7 @@ export async function POST(request: Request) {
     .from('physical_profiles')
     .select('goal, activity_level, age, sex, weight_kg')
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
   const profileContext = physicalProfile
     ? `Age: ${physicalProfile.age}, Sex: ${physicalProfile.sex}, Weight: ${physicalProfile.weight_kg}kg, Activity: ${physicalProfile.activity_level}, Goal: ${physicalProfile.goal}`
@@ -296,47 +304,65 @@ Requirements:
     )
   );
 
-  const tiersBuilt: WorkoutTier[] = [];
+  let planPayload: WorkoutPlanPayloadV2;
 
-  for (let tierIdx = 0; tierIdx < tierSkeletons.length; tierIdx++) {
-    const skeleton = tierSkeletons[tierIdx];
-    const te = tierExperienceForTierIndex(tierIdx);
-
-    const generated = await generateWeekPlanWithDailyAI({
-      skeleton,
-      profileContext,
-      equipment,
-      trainingStyle,
-      tierExperience: te,
-      tierIndex: tierIdx,
-    });
-
-    const week_plan: WeekPlan = {
-      week_start: generated.week_start,
-      split_name: generated.split_name,
-      days: generated.days.map(apiDayToWorkoutDay),
-    };
-
-    const intensity = tierIdx === 0 ? 'moderate' : tierIdx === 1 ? 'medium' : 'intense';
-    const trainingSlice = week_plan.days.find(
-      (d) => d.exercises.length > 0 && !/rest|recovery/i.test(d.workout_type || d.title)
+  try {
+    const generatedTiers = await Promise.all(
+      [0, 1, 2].map((tierIdx) =>
+        generateWeekPlanWithDailyAI({
+          skeleton: tierSkeletons[tierIdx],
+          profileContext,
+          equipment,
+          trainingStyle,
+          tierExperience: tierExperienceForTierIndex(tierIdx),
+          tierIndex: tierIdx,
+        })
+      )
     );
-    const sample_day =
-      trainingSlice?.exercises.slice(0, 5) ?? week_plan.days[0].exercises.slice(0, 3);
 
-    tiersBuilt.push({
-      intensity,
-      weekly_days: weeklyDaysFromPreset,
-      focus: `${presetKey} · ${intensity} · day-by-day generation`,
-      sample_day,
-      week_plan,
-    });
+    const tiersBuilt: WorkoutTier[] = [];
+
+    for (let tierIdx = 0; tierIdx < generatedTiers.length; tierIdx++) {
+      const generated = generatedTiers[tierIdx];
+
+      const week_plan: WeekPlan = {
+        week_start: generated.week_start,
+        split_name: generated.split_name,
+        days: generated.days.map(apiDayToWorkoutDay),
+      };
+
+      const intensity = tierIdx === 0 ? 'moderate' : tierIdx === 1 ? 'medium' : 'intense';
+      const trainingSlice = week_plan.days.find(
+        (d) => d.exercises.length > 0 && !/rest|recovery/i.test(d.workout_type || d.title)
+      );
+      const sample_day =
+        trainingSlice?.exercises.slice(0, 5) ?? week_plan.days[0].exercises.slice(0, 3);
+
+      tiersBuilt.push({
+        intensity,
+        weekly_days: weeklyDaysFromPreset,
+        focus: `${presetKey} · ${intensity} · day-by-day generation`,
+        sample_day,
+        week_plan,
+      });
+    }
+
+    planPayload = {
+      tiers: tiersBuilt,
+      note: `7-day ${presetKey} split. Each training day was generated separately with cumulative exercise tracking so sessions stay unique.`,
+    };
+  } catch (err) {
+    console.error('[workout] week generation failed:', err);
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error
+            ? err.message
+            : 'Workout generation failed. Ensure ANTHROPIC_API_KEY is set and try again.',
+      },
+      { status: 500 }
+    );
   }
-
-  const planPayload: WorkoutPlanPayloadV2 = {
-    tiers: tiersBuilt,
-    note: `7-day ${presetKey} split. Each training day was generated separately with cumulative exercise tracking so sessions stay unique.`,
-  };
 
   await supabase.from('workout_plans').update({ active: false }).eq('user_id', user.id);
 

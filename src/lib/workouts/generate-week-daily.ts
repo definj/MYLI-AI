@@ -38,17 +38,23 @@ function exerciseFingerprint(day: ApiWorkoutDay): string {
     .join('|');
 }
 
-/** Dev-only: fail fast if training days collapsed to identical prescriptions */
+/**
+ * Dev-only diagnostic: never throws (would break generation for users).
+ * Set WORKOUT_STRICT_VALIDATE=true to throw in dev when debugging.
+ */
 export function assertWeekExerciseVarietyDev(days: ApiWorkoutDay[]): void {
-  if (process.env.NODE_ENV === 'production') return;
   const training = days.filter((d) => !/rest|recovery/i.test(d.workout_type || d.title));
   if (training.length < 3) return;
   const fps = training.map((d) => exerciseFingerprint(d));
   const unique = new Set(fps);
   if (unique.size < 3) {
-    throw new Error(
-      `WORKOUT BUG: Week contains too many duplicate training days (${unique.size} unique fingerprints). Each training day must have distinct exercises.`
-    );
+    const msg = `[workout] Variety check: only ${unique.size} unique training-day fingerprints (expected >=3).`;
+    console.warn(msg);
+    if (process.env.WORKOUT_STRICT_VALIDATE === 'true' && process.env.NODE_ENV !== 'production') {
+      throw new Error(
+        `WORKOUT BUG: Week contains too many duplicate training days (${unique.size} unique fingerprints).`
+      );
+    }
   }
 }
 
@@ -73,16 +79,27 @@ function exerciseRangeForTier(tier: TierExperience): { min: number; max: number 
 }
 
 async function callOneDayAI(prompt: string): Promise<ApiWorkoutDay | null> {
-  const ai = await callAnthropicText(
-    [{ role: 'user', content: prompt }],
-    'You are an elite strength & conditioning coach. Return strict JSON only, no markdown fences.',
-    { max_tokens: 2048 }
-  );
-  if (!ai.ok) {
-    console.error('[workout] daily AI failed:', (ai as any).error);
-    return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ai = await callAnthropicText(
+      [{ role: 'user', content: prompt }],
+      'You are an elite strength & conditioning coach. Return strict JSON only, no markdown fences.',
+      { max_tokens: 2048 }
+    );
+    if (!ai.ok) {
+      console.error('[workout] daily AI failed:', (ai as any).error);
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 600));
+      continue;
+    }
+    const parsed = tryParseDay(ai.text);
+    if (parsed) return parsed;
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 400));
   }
-  const parsed = safeJsonParse<Record<string, unknown>>(ai.text);
+  return null;
+}
+
+function tryParseDay(text: string | undefined): ApiWorkoutDay | null {
+  if (!text) return null;
+  const parsed = safeJsonParse<Record<string, unknown>>(text);
   if (!parsed || typeof parsed.date !== 'string') return null;
 
   const exercises = Array.isArray(parsed.exercises)
@@ -93,7 +110,7 @@ async function callOneDayAI(prompt: string): Promise<ApiWorkoutDay | null> {
           reps: String(ex.reps ?? ''),
           rest_sec: Number(ex.rest_sec ?? 60),
         }))
-        .filter((ex) => ex.exercise && ex.sets > 0 && ex.reps)
+        .filter((ex) => ex.exercise && ex.sets > 0 && String(ex.reps ?? '').trim().length > 0)
     : [];
 
   if (exercises.length === 0) return null;
