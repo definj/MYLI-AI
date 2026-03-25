@@ -11,6 +11,7 @@ export async function GET() {
 
   const today = new Date().toISOString().slice(0, 10);
   const todayStart = `${today}T00:00:00.000Z`;
+  const todayEnd = `${today}T23:59:59.999Z`;
 
   const [
     { data: streakRows },
