@@ -11,6 +11,7 @@ import {
   Trophy,
   Users,
 } from 'lucide-react';
+import { SIDEBAR_HIDDEN_PATHS } from '@/lib/app-layout-paths';
 
 const NAV_SECTIONS = [
   {
@@ -32,12 +33,10 @@ const NAV_SECTIONS = [
   },
 ];
 
-const HIDDEN_ON = ['/', '/onboarding'];
-
 export function DesktopSidebar() {
   const pathname = usePathname();
 
-  if (HIDDEN_ON.includes(pathname)) return null;
+  if ((SIDEBAR_HIDDEN_PATHS as readonly string[]).includes(pathname)) return null;
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard';

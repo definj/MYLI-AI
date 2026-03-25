@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { DM_Sans, JetBrains_Mono, Playfair_Display, Geist } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { MobileNav } from "@/components/app/mobile-nav";
 import { DesktopSidebar } from "@/components/app/desktop-sidebar";
+import { MainColumn } from "@/components/app/main-column";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -46,12 +46,7 @@ export default function RootLayout({
       >
         <div className="flex min-h-screen w-full items-stretch justify-center bg-[#0D0D0F] sm:bg-zinc-950">
           <DesktopSidebar />
-          <div className="relative flex h-screen w-full max-w-none flex-col overflow-hidden bg-[#0D0D0F] text-accent-white shadow-none sm:h-[844px] sm:max-h-[844px] sm:max-w-[390px] sm:rounded-[40px] sm:border sm:border-white/10 sm:shadow-2xl lg:h-screen lg:max-h-none lg:max-w-none lg:rounded-none lg:border-0 lg:shadow-none lg:ml-72">
-            <div className="relative z-0 flex-1 overflow-y-auto pb-[80px] scrollbar-none app-background lg:pb-6">
-              {children}
-            </div>
-            <MobileNav />
-          </div>
+          <MainColumn>{children}</MainColumn>
         </div>
       </body>
     </html>
