@@ -7,6 +7,7 @@ import { useWeekCalendar, type CalendarDayData } from '@/hooks/use-week-calendar
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { OPEN_MEAL_CAMERA_EVENT } from '@/components/features/mobile-meal-camera-cta';
 
 type Exercise = {
   exercise: string;
@@ -565,6 +566,12 @@ export function BodyWorkspace() {
     hasAutoOpenedCamera.current = true;
     mobileCameraInputRef.current?.click();
   }, [searchParams]);
+
+  useEffect(() => {
+    const openCamera = () => mobileCameraInputRef.current?.click();
+    window.addEventListener(OPEN_MEAL_CAMERA_EVENT, openCamera);
+    return () => window.removeEventListener(OPEN_MEAL_CAMERA_EVENT, openCamera);
+  }, []);
 
   return (
     <section className="space-y-4 lg:space-y-5">

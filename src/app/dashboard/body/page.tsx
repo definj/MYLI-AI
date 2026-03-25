@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { AlertCircle, Camera, PlayCircle } from 'lucide-react';
+import { AlertCircle, PlayCircle } from 'lucide-react';
 import { BodyWorkspace } from '@/components/features/body-workspace';
+import { MobileMealCameraCta } from '@/components/features/mobile-meal-camera-cta';
 
 export const dynamic = 'force-dynamic';
 
@@ -164,13 +165,7 @@ export default async function BodyDashboardPage() {
           </div>
         </div>
 
-        <Link
-          href="/dashboard/body?openCamera=1#meal-logging"
-          className="flex h-14 w-full items-center justify-center gap-2 rounded-[14px] bg-gradient-to-r from-[#FF6B35] to-[#FF9A5C] text-sm font-semibold text-white shadow-[0_0_20px_rgba(255,107,53,0.35)] md:hidden"
-        >
-          <Camera size={18} />
-          Log Meal via Camera
-        </Link>
+        <MobileMealCameraCta />
 
         <div className="flex items-center gap-3 rounded-[12px] border border-[#FF6B35]/30 bg-[#FF6B35]/12 p-4">
           <AlertCircle size={18} className="text-[#FF6B35]" />
