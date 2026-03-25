@@ -1,14 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-const STREAK_ORDER = ['meal', 'workout', 'journal', 'task'] as const;
-const STREAK_LABELS: Record<string, string> = {
-  meal: 'Meals',
-  workout: 'Train',
-  journal: 'Journal',
-  task: 'Tasks',
-};
-
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -19,7 +11,6 @@ export async function GET() {
 
   const today = new Date().toISOString().slice(0, 10);
   const todayStart = `${today}T00:00:00.000Z`;
-  const todayEnd = `${today}T23:59:59.999Z`;
 
   const [
     { data: streakRows },
@@ -31,7 +22,7 @@ export async function GET() {
       .from('streaks')
       .select('streak_type, current_count, longest_count, last_date')
       .eq('user_id', user.id),
-    supabase.from('profiles').select('myli_score').eq('user_id', user.id).maybeSingle(),
+    supabase.from('profiles').select('myli_score, streak_count').eq('user_id', user.id).maybeSingle(),
     supabase
       .from('meal_logs')
       .select('id', { count: 'exact', head: true })
@@ -47,16 +38,6 @@ export async function GET() {
   ]);
 
   const byType = new Map((streakRows ?? []).map((r) => [r.streak_type, r]));
-  const streaks = STREAK_ORDER.map((type) => {
-    const row = byType.get(type);
-    return {
-      type,
-      label: STREAK_LABELS[type] ?? type,
-      current: row?.current_count ?? 0,
-      longest: row?.longest_count ?? 0,
-      lastDate: row?.last_date ?? null,
-    };
-  });
 
   const journalRow = byType.get('journal');
   const taskRow = byType.get('task');
@@ -83,9 +64,10 @@ export async function GET() {
   ];
 
   const score = Math.max(0, Math.min(100, Number(profile?.myli_score ?? 0)));
+  const appUsageStreak = Math.max(0, Number(profile?.streak_count ?? 0));
 
   return NextResponse.json({
-    streaks,
+    appUsageStreak,
     challenges,
     myliScore: score,
   });
