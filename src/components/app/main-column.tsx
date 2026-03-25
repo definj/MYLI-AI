@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { MobileNav } from '@/components/app/mobile-nav';
+import { GamificationBar } from '@/components/app/gamification-bar';
 import { SIDEBAR_HIDDEN_PATHS } from '@/lib/app-layout-paths';
 
 export function MainColumn({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,7 @@ export function MainColumn({ children }: { children: React.ReactNode }) {
       )}
     >
       <div className="relative z-0 flex-1 overflow-y-auto pb-[80px] scrollbar-none app-background lg:pb-6">
+        {sidebarVisible ? <GamificationBar /> : null}
         {children}
       </div>
       <MobileNav />

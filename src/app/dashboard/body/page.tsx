@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { formatProfileLabel } from '@/lib/utils';
 import { AlertCircle, PlayCircle } from 'lucide-react';
 import { BodyWorkspace } from '@/components/features/body-workspace';
 import { MobileMealCameraCta } from '@/components/features/mobile-meal-camera-cta';
@@ -22,9 +23,8 @@ export default async function BodyDashboardPage() {
   fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
   const todayDate = new Date().toISOString().split('T')[0];
 
-  const [{ data: profile }, { data: physical }, { data: recentMeals }, { data: streaks }, { data: workoutLogs }, { count: recentMealCount }, { data: latestVitamin }, { data: todayBrief }] =
+  const [{ data: physical }, { data: recentMeals }, { data: workoutLogs }, { count: recentMealCount }, { data: latestVitamin }, { data: todayBrief }] =
     await Promise.all([
-      supabase.from('profiles').select('myli_score, streak_count, track').eq('user_id', user.id).single(),
       supabase
         .from('physical_profiles')
         .select('goal, bmi, bmr, tdee, activity_level, weight_kg')
@@ -35,10 +35,6 @@ export default async function BodyDashboardPage() {
         .select('calories, protein_g, carbs_g, fat_g, logged_at')
         .eq('user_id', user.id)
         .gte('logged_at', todayStart.toISOString()),
-      supabase
-        .from('streaks')
-        .select('streak_type, current_count, longest_count')
-        .eq('user_id', user.id),
       supabase
         .from('workout_logs')
         .select('date, completed, duration_min')
@@ -77,7 +73,6 @@ export default async function BodyDashboardPage() {
   );
 
   const completedWorkouts = (workoutLogs ?? []).filter((w) => w.completed).length;
-  const activeStreak = (streaks ?? []).find((s) => s.streak_type === 'workout');
 
   const caloriesTarget = Math.max(1200, Math.round(Number(physical?.tdee ?? 2200)));
   const caloriesValue = Math.max(0, Math.round(macroTotals.calories));
@@ -187,7 +182,7 @@ export default async function BodyDashboardPage() {
             <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-white/80">45 MIN</span>
           </div>
           <h3 className="mt-3 text-xl font-bold">
-            {physical?.goal ? `${String(physical.goal).replace('_', ' ')} Session` : 'Hypertrophy Push'}
+            {physical?.goal ? `${formatProfileLabel(physical.goal)} Session` : 'Hypertrophy Push'}
           </h3>
           <p className="text-sm text-white/60">
             {todayBrief?.greeting || `${completedWorkouts} completed workouts this week. Keep momentum.`}
@@ -200,17 +195,10 @@ export default async function BodyDashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-white/45">Streak</p>
-            <p className="mt-2 text-2xl font-bold">{activeStreak?.current_count ?? profile?.streak_count ?? 0}</p>
-            <p className="text-xs text-white/55">Longest {activeStreak?.longest_count ?? 0}</p>
-          </div>
-          <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-white/45">TDEE</p>
-            <p className="mt-2 text-2xl font-bold">{Math.round(Number(physical?.tdee ?? 0)) || '--'}</p>
-            <p className="text-xs text-white/55">cal/day</p>
-          </div>
+        <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-white/45">TDEE</p>
+          <p className="mt-2 text-2xl font-bold">{Math.round(Number(physical?.tdee ?? 0)) || '--'}</p>
+          <p className="text-xs text-white/55">cal/day</p>
         </div>
 
         <BodyWorkspace />

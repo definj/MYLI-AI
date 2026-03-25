@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { formatProfileLabel } from '@/lib/utils';
 import { Flame, MessageCircle, Star, Target, Trophy } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -145,12 +146,16 @@ export default async function DashboardPage() {
             <Link href="/dashboard/body" className="rounded-[12px] border border-[#FF6B35]/25 bg-[#FF6B35]/8 p-3">
               <p className="text-xs uppercase tracking-[0.16em] text-[#FFC3A0]">Physical</p>
               <p className="mt-1 font-semibold">{todayMealsCount ?? 0} meals</p>
-              <p className="text-xs text-white/55">{physical?.goal ?? 'Goal not set'}</p>
+              <p className="text-xs text-white/55">
+                {physical?.goal ? formatProfileLabel(physical.goal) : 'Goal not set'}
+              </p>
             </Link>
             <Link href="/dashboard/mind" className="rounded-[12px] border border-[#A78BFA]/25 bg-[#A78BFA]/8 p-3">
               <p className="text-xs uppercase tracking-[0.16em] text-[#D5C7FF]">Mental</p>
               <p className="mt-1 font-semibold">{pendingTaskCount ?? 0} open tasks</p>
-              <p className="text-xs text-white/55">{mental?.productivity_style ?? 'Style not set'}</p>
+              <p className="text-xs text-white/55">
+                {mental?.productivity_style ? formatProfileLabel(mental.productivity_style) : 'Style not set'}
+              </p>
             </Link>
           </div>
         </div>

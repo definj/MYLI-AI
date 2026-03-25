@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { formatProfileLabel } from '@/lib/utils';
 import { AlertTriangle, Circle, CircleCheck, Coffee, Moon, Plus, Zap } from 'lucide-react';
 import { MindWorkspace } from '@/components/features/mind-workspace';
 const RITUAL_CATEGORY = 'health';
@@ -170,7 +171,7 @@ export default async function MindDashboardPage() {
               <p className="text-[10px] uppercase tracking-[0.18em] text-white/60">Schedule</p>
             </div>
             <ul className="mt-2 space-y-1 text-[13px] text-white/70">
-              <li>• {mental?.productivity_style || 'Deep work block'}</li>
+              <li>• {formatProfileLabel(mental?.productivity_style, 'Deep work block')}</li>
               <li>• Sleep avg {mental?.sleep_avg ?? '--'} h</li>
             </ul>
           </div>
